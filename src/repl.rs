@@ -64,12 +64,7 @@ impl<'a> LKEval<'a> {
       },
       Command::Ls => {
         for (_, name) in &self.state.borrow().db {
-          let pw = name.borrow();
-          let prefix = match pw.prefix.as_ref() { Some(s) => format!("{} ", s), None => "".to_string() };
-          let length = match pw.length { Some(l) => format!("{}", l), None => "".to_string() };
-          let comment = match pw.comment.as_ref() { Some(s) => format!(" {}", s), None => "".to_string() };
-          let parent = match &pw.parent { Some(s) => format!(" ^{}", s.borrow().name), None => "".to_string() };
-          out.push(format!("{}{} {}{} {} {}{}{}", prefix, pw.name, length, pw.mode, pw.seq, pw.date, comment, parent));
+          out.push(name.borrow().to_string());
         }
       },
       Command::Add(name) => {

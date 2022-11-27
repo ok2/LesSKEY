@@ -55,17 +55,27 @@ pub struct LK {
 
 impl std::fmt::Display for Mode {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-        Mode::Regular => write!(f, "R"),
-        Mode::RegularUpcase => write!(f, "UR"),
-        Mode::NoSpace => write!(f, "N"),
-        Mode::NoSpaceUpcase => write!(f, "UN"),
-        Mode::Hex => write!(f, "H"),
-        Mode::HexUpcase => write!(f, "UH"),
-        Mode::Base64 => write!(f, "B"),
-        Mode::Base64Upcase => write!(f, "UB"),
-        Mode::Decimal => write!(f, "D"),
-    }
+    write!(f, "{}", match self {
+        Mode::Regular => "R",
+        Mode::RegularUpcase => "UR",
+        Mode::NoSpace => "N",
+        Mode::NoSpaceUpcase => "UN",
+        Mode::Hex => "H",
+        Mode::HexUpcase => "UH",
+        Mode::Base64 => "B",
+        Mode::Base64Upcase => "UB",
+        Mode::Decimal => "D",
+    }.to_string())
+  }
+}
+
+impl std::string::ToString for Password {
+  fn to_string(&self) -> String {
+    let prefix = match self.prefix.as_ref() { Some(s) => format!("{} ", s), None => "".to_string() };
+    let length = match self.length { Some(l) => format!("{}", l), None => "".to_string() };
+    let comment = match self.comment.as_ref() { Some(s) => format!(" {}", s), None => "".to_string() };
+    let parent = match &self.parent { Some(s) => format!(" ^{}", s.borrow().name), None => "".to_string() };
+    format!("{}{} {}{} {} {}{}{}", prefix, self.name, length, self.mode, self.seq, self.date, comment, parent)
   }
 }
 
