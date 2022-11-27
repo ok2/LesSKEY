@@ -1,0 +1,17 @@
+[package]
+name = "my-project"
+version = "0.1.0"
+authors = ["runner"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4.23"
+peg = "0.8.1"
+anyhow = "1.0.66"
+lazy_static = "1.4.0"
+regex = "1.6.0"
+rustyline = "10.0.0"
+thiserror = "1.0.37"
+anyerror = "0.1.7"
