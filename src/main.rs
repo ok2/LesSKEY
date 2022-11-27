@@ -1,12 +1,17 @@
 #[macro_use]
 extern crate lazy_static;
 
-pub mod structs;
-pub mod parser;
-pub mod repl;
+mod structs;
+mod parser;
+mod repl;
+
+use std::{cell::RefCell, rc::Rc};
+use std::collections::HashMap;
 
 use rustyline::Editor;
-use std::{cell::RefCell, rc::Rc};
+
+use crate::structs::LK;
+use crate::repl::LKRead;
 
 pub fn main() {
     let lk = Rc::new(RefCell::new(LK { db: HashMap::new() }));

@@ -1,3 +1,4 @@
+use std::{cell::RefCell, rc::Rc};
 use std::collections::HashMap;
 use regex::{Regex, Captures};
 use chrono::naive::NaiveDate;
@@ -8,12 +9,8 @@ pub enum LKErr<'a> {
   Error(&'a str),
   #[error("Failed to read the line: {0}")]
   ReadError(String),
-  #[error("Failed to parse {0}: {1}")]
-  ParseError(&'a str, &'a str),
-  #[error("Failed to parse {0}: {1}")]
-  ParseErrorS(&'a str, String),
   #[error("Failed to parse: {0}")]
-  PegParseError(peg::error::ParseError<peg::str::LineCol>),
+  ParseError(peg::error::ParseError<peg::str::LineCol>),
 }
 
 #[derive(PartialEq, Debug)]
@@ -31,14 +28,14 @@ pub enum Mode {
 
 #[derive(PartialEq, Debug)]
 pub struct Password {
-  parent: Option<Rc<RefCell<Password>>>,
-  prefix: Option<String>,
-  name: Rc<String>,
-  length: Option<u32>,
-  mode: Mode,
-  seq: u32,
-  date: NaiveDate,
-  comment: Option<String>,
+  pub parent: Option<Rc<RefCell<Password>>>,
+  pub prefix: Option<String>,
+  pub name: Rc<String>,
+  pub length: Option<u32>,
+  pub mode: Mode,
+  pub seq: u32,
+  pub date: NaiveDate,
+  pub comment: Option<String>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -51,9 +48,9 @@ pub enum Command<'a> {
   Quit
 }
 
-#[derive(Debug)]
-struct LK {
-  db: HashMap<Rc<String>, Rc<RefCell<Password>>>,
+#[derive(PartialEq, Debug)]
+pub struct LK {
+  pub db: HashMap<Rc<String>, Rc<RefCell<Password>>>,
 }
 
 impl std::fmt::Display for Mode {
@@ -73,7 +70,7 @@ impl std::fmt::Display for Mode {
 }
 
 impl LK {
-  fn fix_hierarchy(&self) {
+  pub fn fix_hierarchy(&self) {
     lazy_static! {
       static ref RE: Regex = Regex::new(r"\s*\^([!-~]+)").unwrap();
     }

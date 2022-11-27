@@ -1,5 +1,11 @@
+use rustyline::Editor;
+use std::{cell::RefCell, rc::Rc};
+
+use crate::structs::{LKErr, Command, LK};
+use crate::parser::command_parser;
+
 #[derive(Debug)]
-struct LKRead {
+pub struct LKRead {
   rl: Editor::<()>,
   prompt: String,
   state: Rc<RefCell<LK>>,
@@ -7,47 +13,47 @@ struct LKRead {
 }
 
 #[derive(Debug)]
-struct LKEval<'a> {
+pub struct LKEval<'a> {
   cmd: Command<'a>,
   state: Rc<RefCell<LK>>,
 }
 
-#[derive(Debug)]
-struct LKPrint {
+#[derive(Debug, PartialEq)]
+pub struct LKPrint {
   out: Vec<String>,
   quit: bool,
-  // state: Rc<RefCell<LK>>,
+  state: Rc<RefCell<LK>>,
 }
 
 impl LKRead {
-  fn new(rl: Editor::<()>, prompt: String, state: Rc<RefCell<LK>>) -> Self {
+  pub fn new(rl: Editor::<()>, prompt: String, state: Rc<RefCell<LK>>) -> Self {
      Self { rl, prompt, state, cmd: "".to_string() }
   }
 
-  fn read(&mut self) -> LKEval {
+  pub fn read(&mut self) -> LKEval {
     self.cmd = match self.rl.readline(&*self.prompt) {
       Ok(str) => str,
       Err(err) => return LKEval::new(Command::Error(LKErr::ReadError(err.to_string())), self.state.clone()),
     };
     match command_parser::cmd(self.cmd.as_str()) {
       Ok(cmd) => LKEval::new(cmd, self.state.clone()),
-      Err(err) => LKEval::new(Command::Error(LKErr::PegParseError(err)), self.state.clone()),
+      Err(err) => LKEval::new(Command::Error(LKErr::ParseError(err)), self.state.clone()),
     }
   }
 
-  fn refresh(&mut self) {
+  pub fn refresh(&mut self) {
 
   }
 
-  fn quit(&mut self) {
+  pub fn quit(&mut self) {
 
   }
 }
 
 impl<'a> LKEval<'a> {
-  fn new(cmd: Command<'a>, state: Rc<RefCell<LK>>) -> Self { Self { cmd, state } }
+  pub fn new(cmd: Command<'a>, state: Rc<RefCell<LK>>) -> Self { Self { cmd, state } }
 
-  fn eval(&mut self) -> LKPrint {
+  pub fn eval(&mut self) -> LKPrint {
     let mut out: Vec<String> = vec![];
     let mut quit: bool = false;
 
@@ -95,25 +101,48 @@ impl<'a> LKEval<'a> {
       },
       Command::Error(err) => {
         match err {
-          LKErr::PegParseError(e) => { out.push(e.to_string()) },
+          LKErr::ParseError(e) => { out.push(e.to_string()) },
           LKErr::ReadError(e) => { out.push(e.to_string()) },
           LKErr::Error(e) => { out.push(format!("error: {}", e.to_string())) },
-          _ => out.push(format!("error: {:?}", err)),
         }
       }
     }
 
-    LKPrint::new(out, quit)
+    LKPrint::new(out, quit, self.state.clone())
   }
 }
 
 impl LKPrint {
-    fn new(out: Vec<String>, quit: bool) -> Self { Self { out, quit } }
+    pub fn new(out: Vec<String>, quit: bool, state: Rc<RefCell<LK>>) -> Self { Self { out, quit, state } }
 
-    fn print(&mut self) -> bool {
+    pub fn print(&mut self) -> bool {
         for line in &self.out {
             println!("{}", line);
         }
         return !self.quit;
     }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::collections::HashMap;
+  use chrono::naive::NaiveDate;
+  use crate::structs::*;
+
+  #[test]
+  fn exec_cmds_basic() {
+    let lk = Rc::new(RefCell::new(LK { db: HashMap::new() }));
+    assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
+    let pwd = Rc::new(RefCell::new(Password { name: Rc::new("t1".to_string()),
+                                              prefix: None,
+                                              length: None,
+                                              mode: Mode::Regular,
+                                              seq: 99,
+                                              date: NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+                                              comment: Some("comment".to_string()),
+                                              parent: None }));
+    assert_eq!(LKEval::new(Command::Add(pwd.clone()), lk.clone()).eval().state.borrow().db,
+               { let mut db = HashMap::new(); db.insert(pwd.borrow().name.clone(), pwd.clone()); db });
+  }
 }

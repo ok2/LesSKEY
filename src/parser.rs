@@ -1,7 +1,11 @@
 extern crate peg;
 
+use std::{cell::RefCell, rc::Rc};
+use chrono::naive::NaiveDate;
+use crate::structs::{Mode, Command, Password, LKErr};
+
 peg::parser!{
-  grammar command_parser() for str {
+  pub grammar command_parser() for str {
     pub rule cmd() -> Command<'input> = c:(
       help_cmd()
       / add_cmd()
@@ -66,60 +70,60 @@ peg::parser!{
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+  use super::*;
 
-    #[test]
-    fn parse_password_test() {
-        assert_eq!(command_parser::name("ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: None, mode: Mode::Regular,
-                                 length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
-        assert_eq!(command_parser::name("ableton89 U 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: None, mode: Mode::RegularUpcase,
-                                 length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
-        assert_eq!(command_parser::name("ableton89 U 2020-12-09"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: None, mode: Mode::RegularUpcase,
-                                 length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(), comment: None }));
-        assert_eq!(command_parser::name("#W9 ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Regular,
-                                 length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 N 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::NoSpace,
-                                 length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 UN 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::NoSpaceUpcase,
-                                 length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 20R 99 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Regular,
-                                 length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 20UR 99 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::RegularUpcase,
-                                 length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 20UH 99 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::HexUpcase,
-                                 length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 20UB 99 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Base64Upcase,
-                                 length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-        assert_eq!(command_parser::name("#W9 ableton89 20D 99 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Decimal,
-                                 length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-        assert_eq!(command_parser::name("ableton89 20D 98 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: None, mode: Mode::Decimal,
-                                 length: Some(20), seq: 98, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-        assert_eq!(command_parser::name("ableton89 20D 2020-12-09 a b c"),
-                   Ok(Password { name: "ableton89".to_string(), parent: None, prefix: None, mode: Mode::Decimal,
-                                 length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
-                                 comment: Some("a b c".to_string()) }));
-    }
+  #[test]
+  fn parse_password_test() {
+    assert_eq!(command_parser::name("ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: None, mode: Mode::Regular,
+                             length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
+    assert_eq!(command_parser::name("ableton89 U 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: None, mode: Mode::RegularUpcase,
+                             length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
+    assert_eq!(command_parser::name("ableton89 U 2020-12-09"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: None, mode: Mode::RegularUpcase,
+                             length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(), comment: None }));
+    assert_eq!(command_parser::name("#W9 ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Regular,
+                             length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 N 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::NoSpace,
+                             length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 UN 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::NoSpaceUpcase,
+                             length: None, seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 20R 99 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Regular,
+                             length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 20UR 99 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::RegularUpcase,
+                             length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 20UH 99 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::HexUpcase,
+                             length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 20UB 99 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Base64Upcase,
+                             length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+    assert_eq!(command_parser::name("#W9 ableton89 20D 99 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: Some("#W9".to_string()), mode: Mode::Decimal,
+                             length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+    assert_eq!(command_parser::name("ableton89 20D 98 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: None, mode: Mode::Decimal,
+                             length: Some(20), seq: 98, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+    assert_eq!(command_parser::name("ableton89 20D 2020-12-09 a b c"),
+               Ok(Password { name: Rc::new("ableton89".to_string()), parent: None, prefix: None, mode: Mode::Decimal,
+                             length: Some(20), seq: 99, date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                             comment: Some("a b c".to_string()) }));
+  }
 }
