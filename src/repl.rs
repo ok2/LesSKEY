@@ -129,15 +129,33 @@ mod tests {
   fn exec_cmds_basic() {
     let lk = Rc::new(RefCell::new(LK { db: HashMap::new() }));
     assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
-    let pwd = Rc::new(RefCell::new(Password { name: Rc::new("t1".to_string()),
-                                              prefix: None,
-                                              length: None,
-                                              mode: Mode::Regular,
-                                              seq: 99,
-                                              date: NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
-                                              comment: Some("comment".to_string()),
-                                              parent: None }));
-    assert_eq!(LKEval::new(Command::Add(pwd.clone()), lk.clone()).eval().state.borrow().db,
-               { let mut db = HashMap::new(); db.insert(pwd.borrow().name.clone(), pwd.clone()); db });
+    let pwd1 = Rc::new(RefCell::new(Password { name: Rc::new("t1".to_string()),
+                                               prefix: None, length: None,
+                                               mode: Mode::Regular, seq: 99,
+                                               date: NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+                                               comment: Some("comment".to_string()),
+                                               parent: None }));
+    assert_eq!(LKEval::new(Command::Add(pwd1.clone()), lk.clone()).eval().state.borrow().db,
+               { let mut db = HashMap::new();
+                 db.insert(pwd1.borrow().name.clone(), pwd1.clone());
+                 db });
+    assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(),
+               LKPrint::new(vec!["t1 R 99 2022-12-30 comment"], false, lk.clone()));
+    assert_eq!(LKEval::new(Command::Quit, lk.clone()).eval(),
+               LKPrint::new(vec!["Bye"], true, lk.clone()));
+    let pwd2 = Rc::new(RefCell::new(Password { name: Rc::new("t2".to_string()),
+                                               prefix: None, length: None,
+                                               mode: Mode::Regular, seq: 99,
+                                               date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                                               comment: Some("bli blup".to_string()),
+                                               parent: None }));
+    assert_eq!(LKEval::new(Command::Add(pwd2.clone()), lk.clone()).eval().state.borrow().db,
+               { let mut db = HashMap::new();
+                 db.insert(pwd1.borrow().name.clone(), pwd1.clone());
+                 db.insert(pwd2.borrow().name.clone(), pwd2.clone());
+                 db });
+    assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(),
+               LKPrint::new(vec!["t1 R 99 2022-12-30 comment",
+                                 "t2 R 99 2022-12-31 bli blup"], false, lk.clone()));
   }
 }
