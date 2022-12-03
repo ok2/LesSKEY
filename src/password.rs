@@ -41,10 +41,10 @@ pub fn fix_password_recursion(entry: Rc<RefCell<Password>>) {
   let mut t3: Option<Rc<RefCell<Password>>> = None;
   loop {
     t2 = match &t2.clone().borrow().parent { Some(o) => o.clone(), None => break };
-    if std::ptr::eq((*t1).as_ptr(), (*t2).as_ptr()) { t3 = Some(t1.clone()); break; }
+    if std::ptr::eq(&*t1.borrow(), &*t2.borrow()) { t3 = Some(t2.clone()); break; }
     t1 = match &t1.clone().borrow().parent { Some(o) => o.clone(), None => break };
     t2 = match &t2.clone().borrow().parent { Some(o) => o.clone(), None => break };
-    if std::ptr::eq((*t1).as_ptr(), (*t2).as_ptr()) { t3 = Some(t1.clone()); break; }
+    if std::ptr::eq(&*t1.borrow(), &*t2.borrow()) { t3 = Some(t2.clone()); break; }
   }
   match t3 {
     Some(o) => o.borrow_mut().parent = None,
