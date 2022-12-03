@@ -1,5 +1,4 @@
-use crate::password::Password;
-use std::{cell::RefCell, rc::Rc};
+use crate::password::{Comment, Name, PasswordRef};
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum LKErr<'a> {
@@ -13,9 +12,10 @@ pub enum LKErr<'a> {
 
 #[derive(PartialEq, Debug)]
 pub enum Command<'a> {
-    Add(Rc<RefCell<Password>>),
+    Add(PasswordRef),
     Ls,
-    Mv(String, String),
+    Mv(Name, Name),
+    Comment(Name, Comment),
     Error(LKErr<'a>),
     Help,
     Quit,

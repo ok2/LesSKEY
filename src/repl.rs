@@ -105,6 +105,15 @@ impl<'a> LKEval<'a> {
                     self.state.borrow().fix_hierarchy();
                 }
             }
+            Command::Comment(name, comment) => match self.state.borrow().db.get(name) {
+                Some(pwd) => {
+                    pwd.borrow_mut().comment = match comment {
+                        Some(c) => Some(c.to_string()),
+                        None => None,
+                    }
+                }
+                None => out.push("error: password not found".to_string()),
+            },
             Command::Help => {
                 out.push("HELP".to_string());
             }

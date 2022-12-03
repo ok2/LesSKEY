@@ -14,25 +14,24 @@ peg::parser! {
             / error_cmd()
             / ls_cmd()
             / mv_cmd()
+            / comment_cmd()
         ) { c }
         pub rule name() -> Password = name:(jname() / pname() / mname() / sname()) { name }
-    
+
         rule _() -> &'input str = s:$((" " / "\t" / "\r" / "\n")+) { s }
-        rule comment() -> &'input str = _ c:$([' '..='~']+) { c }
-        rule word() -> &'input str = n:$(['!'..='~']+) { n }
+        rule comment() -> String = _ c:$([' '..='~']+) { c.to_string() }
+        rule word() -> String = n:$(['!'..='~']+) { n.to_string() }
         rule num() -> u32 = n:$(['0'..='9']+) {? n.parse().or(Err("not a number")) }
-        rule pname() -> Password = &(word() _ word() _ num()? mode() _ num() _ date()) pr:word() _ pn:word() _ pl:num()? pm:mode() _ ps:num() _ pd:date() pc:comment()? {
-            Password { prefix: Some(pr.to_string()), length: pl, name: Rc::new(pn.to_string()), mode: pm, seq: ps, date: pd, parent: None,
-                       comment: match pc { Some(s) => Some(s.to_string()), None => None } } }
-        rule jname() -> Password = &(word() _ num()? mode() _ num() _ date()) pn:word() _ pl:num()? pm:mode() _ ps:num() _ pd:date() pc:comment()? {
-            Password { prefix: None, length: pl, name: Rc::new(pn.to_string()), mode: pm, seq: ps, date: pd, parent: None,
-                       comment: match pc { Some(s) => Some(s.to_string()), None => None } } }
-        rule mname() -> Password = &(word() _ word() _ num()? mode() _ date()) pr:word() _ pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()? {
-            Password { prefix: Some(pr.to_string()), length: pl, name: Rc::new(pn.to_string()), mode: pm, seq: 99, date: pd, parent: None,
-                       comment: match pc { Some(s) => Some(s.to_string()), None => None } } }
-        rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()? {
-            Password { prefix: None, length: pl, name: Rc::new(pn.to_string()), mode: pm, seq: 99, date: pd, parent: None,
-                       comment: match pc { Some(s) => Some(s.to_string()), None => None } } }
+
+        rule pname() -> Password = &(word() _ word() _ num()? mode() _ num() _ date()) pr:word() _ pn:word() _ pl:num()? pm:mode() _ ps:num() _ pd:date() pc:comment()?
+        { Password::new(Some(pr), pn, pl, pm, ps, pd, pc) }
+        rule jname() -> Password = &(word() _ num()? mode() _ num() _ date()) pn:word() _ pl:num()? pm:mode() _ ps:num() _ pd:date() pc:comment()?
+        { Password::new(None, pn, pl, pm, ps, pd, pc) }
+        rule mname() -> Password = &(word() _ word() _ num()? mode() _ date()) pr:word() _ pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
+        { Password::new(Some(pr), pn, pl, pm, 99, pd, pc) }
+        rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
+        { Password::new(None, pn, pl, pm, 99, pd, pc) }
+
         rule date() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
             let year:  i32 = match y.parse() { Ok(n) => n, Err(_) => return Err("year") };
             let month: u32 = match m.parse() { Ok(n) => n, Err(_) => return Err("month") };
@@ -65,7 +64,8 @@ peg::parser! {
         rule ls_cmd() -> Command<'input> = "ls" { Command::Ls }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
-        rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name.to_string(), folder.to_string()) }
+        rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
+        rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
 }
 

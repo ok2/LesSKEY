@@ -1,11 +1,10 @@
-use crate::password::{fix_password_recursion, Password};
+use crate::password::{fix_password_recursion, NameRef, PasswordRef};
 use regex::{Captures, Regex};
 use std::collections::HashMap;
-use std::{cell::RefCell, rc::Rc};
 
 #[derive(PartialEq, Debug)]
 pub struct LK {
-    pub db: HashMap<Rc<String>, Rc<RefCell<Password>>>,
+    pub db: HashMap<NameRef, PasswordRef>,
 }
 
 impl LK {

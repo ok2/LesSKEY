@@ -2,29 +2,47 @@ use crate::structs::Mode;
 use chrono::naive::NaiveDate;
 use std::{cell::RefCell, rc::Rc};
 
+pub type Name = String;
+pub type NameRef = Rc<Name>;
+pub type Prefix = Option<String>;
+pub type Comment = Option<String>;
+pub type PasswordRef = Rc<RefCell<Password>>;
+pub type Parent = Option<PasswordRef>;
+pub type Length = Option<u32>;
+pub type Seq = u32;
+pub type Date = NaiveDate;
+
 #[derive(PartialEq, Debug)]
 pub struct Password {
-    pub parent: Option<Rc<RefCell<Password>>>,
-    pub prefix: Option<String>,
-    pub name: Rc<String>,
-    pub length: Option<u32>,
+    pub parent: Parent,
+    pub prefix: Prefix,
+    pub name: NameRef,
+    pub length: Length,
     pub mode: Mode,
-    pub seq: u32,
-    pub date: NaiveDate,
-    pub comment: Option<String>,
+    pub seq: Seq,
+    pub date: Date,
+    pub comment: Comment,
 }
 
 impl Password {
-    pub fn new(prefix: Option<String>, name: String, mode: Mode, date: NaiveDate) -> Password {
+    pub fn new(
+        prefix: Prefix,
+        name: Name,
+        length: Length,
+        mode: Mode,
+        seq: Seq,
+        date: Date,
+        comment: Comment,
+    ) -> Password {
         Password {
             prefix,
+            name: Rc::new(name),
+            length,
             mode,
             date,
+            comment,
             parent: None,
-            name: Rc::new(name),
-            length: None,
-            seq: 99,
-            comment: None,
+            seq,
         }
     }
 }
@@ -95,8 +113,11 @@ mod tests {
         let p1 = Rc::new(RefCell::new(Password::new(
             None,
             "p1".to_string(),
+            None,
             Mode::Regular,
+            99,
             NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            None,
         )));
 
         p1.borrow_mut().parent = Some(p1.clone());
@@ -106,29 +127,41 @@ mod tests {
         let p2 = Rc::new(RefCell::new(Password::new(
             None,
             "p2".to_string(),
+            None,
             Mode::Regular,
+            99,
             NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            None,
         )));
         p2.borrow_mut().parent = Some(p1.clone());
         let p3 = Rc::new(RefCell::new(Password::new(
             None,
             "p3".to_string(),
+            None,
             Mode::Regular,
+            99,
             NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            None,
         )));
         p3.borrow_mut().parent = Some(p2.clone());
         let p4 = Rc::new(RefCell::new(Password::new(
             None,
             "p4".to_string(),
+            None,
             Mode::Regular,
+            99,
             NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            None,
         )));
         p4.borrow_mut().parent = Some(p3.clone());
         let p5 = Rc::new(RefCell::new(Password::new(
             None,
             "p5".to_string(),
+            None,
             Mode::Regular,
+            99,
             NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            None,
         )));
         p5.borrow_mut().parent = Some(p4.clone());
 
