@@ -2,6 +2,7 @@
 extern crate lazy_static;
 
 mod structs;
+mod password;
 mod parser;
 mod repl;
 mod lk;

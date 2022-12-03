@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 use std::collections::HashMap;
 use regex::{Regex, Captures};
-use crate::structs::{Password, fix_password_recursion};
+use crate::password::{Password, fix_password_recursion};
 
 #[derive(PartialEq, Debug)]
 pub struct LK {

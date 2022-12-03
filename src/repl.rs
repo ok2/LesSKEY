@@ -3,7 +3,8 @@ use std::{cell::RefCell, rc::Rc};
 use home::home_dir;
 
 use crate::lk::LK;
-use crate::structs::{LKErr, Command, fix_password_recursion};
+use crate::structs::{LKErr, Command};
+use crate::password::fix_password_recursion;
 use crate::parser::command_parser;
 
 #[derive(Debug)]
@@ -136,7 +137,8 @@ mod tests {
   use super::*;
   use std::collections::HashMap;
   use chrono::naive::NaiveDate;
-  use crate::structs::*;
+  use crate::structs::Mode;
+  use crate::password::Password;
 
   #[test]
   fn exec_cmds_basic() {

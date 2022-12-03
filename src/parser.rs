@@ -2,7 +2,8 @@ extern crate peg;
 
 use std::{cell::RefCell, rc::Rc};
 use chrono::naive::NaiveDate;
-use crate::structs::{Mode, Command, Password, LKErr};
+use crate::structs::{Command, LKErr, Mode};
+use crate::password::Password;
 
 peg::parser!{
   pub grammar command_parser() for str {
