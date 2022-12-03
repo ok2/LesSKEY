@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 use std::collections::HashMap;
 use regex::{Regex, Captures};
-use crate::structs::Password;
+use crate::structs::{Password, fix_password_recursion};
 
 #[derive(PartialEq, Debug)]
 pub struct LK {
@@ -9,6 +9,10 @@ pub struct LK {
 }
 
 impl LK {
+  pub fn new() -> Self {
+    Self { db: HashMap::new() }
+  }
+
   pub fn fix_hierarchy(&self) {
     lazy_static! {
       static ref RE: Regex = Regex::new(r"\s*\^([!-~]+)").unwrap();
@@ -22,17 +26,16 @@ impl LK {
           let folder_name = folder.unwrap();
           for (_, entry) in &self.db {
             if *entry.borrow().name == *folder_name {
-              {
-                let mut tmp = name.borrow_mut();
-                tmp.parent = Some(entry.clone());
-                if comment.len() == 0 { tmp.comment = None }
-                else { tmp.comment = Some(comment.to_string()) }
-              }
+              let mut tmp = name.borrow_mut();
+              tmp.parent = Some(entry.clone());
+              if comment.len() == 0 { tmp.comment = None }
+              else { tmp.comment = Some(comment.to_string()) }
               break;
             }
           }
         }
       }
+      fix_password_recursion(name.clone());
     }
   }  
 }

@@ -7,15 +7,13 @@ mod repl;
 mod lk;
 
 use std::{cell::RefCell, rc::Rc};
-use std::collections::HashMap;
-
 use rustyline::Editor;
 
 use crate::lk::LK;
 use crate::repl::LKRead;
 
 pub fn main() {
-    let lk = Rc::new(RefCell::new(LK { db: HashMap::new() }));
+    let lk = Rc::new(RefCell::new(LK::new()));
     let mut lkread = LKRead::new(
         Editor::<()>::new().unwrap(),
         String::from("❯ "),

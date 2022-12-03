@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use home::home_dir;
 
 use crate::lk::LK;
-use crate::structs::{LKErr, Command};
+use crate::structs::{LKErr, Command, fix_password_recursion};
 use crate::parser::command_parser;
 
 #[derive(Debug)]
@@ -77,6 +77,7 @@ impl<'a> LKEval<'a> {
         for (_, name) in &self.state.borrow().db {
           out.push(name.borrow().to_string());
         }
+        out.sort();
       },
       Command::Add(name) => {
         if self.state.borrow().db.get(&name.borrow().name).is_some() {
@@ -97,6 +98,7 @@ impl<'a> LKEval<'a> {
               for (_, fld) in &self.state.borrow().db {
                 if *fld.borrow().name == *folder {
                   tmp.borrow_mut().parent = Some(fld.clone());
+                  fix_password_recursion(tmp.clone());
                   break;
                 }
               }
@@ -138,7 +140,7 @@ mod tests {
 
   #[test]
   fn exec_cmds_basic() {
-    let lk = Rc::new(RefCell::new(LK { db: HashMap::new() }));
+    let lk = Rc::new(RefCell::new(LK::new()));
     assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
     let pwd1 = Rc::new(RefCell::new(Password { name: Rc::new("t1".to_string()),
                                                prefix: None, length: None,
@@ -151,9 +153,9 @@ mod tests {
                  db.insert(pwd1.borrow().name.clone(), pwd1.clone());
                  db });
     assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(),
-               LKPrint::new(vec!["t1 R 99 2022-12-30 comment"], false, lk.clone()));
+               LKPrint::new(vec!["t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
     assert_eq!(LKEval::new(Command::Quit, lk.clone()).eval(),
-               LKPrint::new(vec!["Bye"], true, lk.clone()));
+               LKPrint::new(vec!["Bye!".to_string()], true, lk.clone()));
     let pwd2 = Rc::new(RefCell::new(Password { name: Rc::new("t2".to_string()),
                                                prefix: None, length: None,
                                                mode: Mode::Regular, seq: 99,
@@ -166,7 +168,8 @@ mod tests {
                  db.insert(pwd2.borrow().name.clone(), pwd2.clone());
                  db });
     assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(),
-               LKPrint::new(vec!["t1 R 99 2022-12-30 comment",
-                                 "t2 R 99 2022-12-31 bli blup"], false, lk.clone()));
+               LKPrint::new(vec!["t1 R 99 2022-12-30 comment".to_string(),
+                                 "t2 R 99 2022-12-31 bli blup".to_string()],
+                            false, lk.clone()));
   }
 }
