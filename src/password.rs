@@ -57,10 +57,7 @@ impl std::string::ToString for Password {
             Some(s) => format!(" ^{}", s.borrow().name),
             None => "".to_string(),
         };
-        format!(
-            "{}{} {}{} {} {}{}{}",
-            prefix, self.name, length, self.mode, self.seq, self.date, comment, parent
-        )
+        format!("{}{} {}{} {} {}{}{}", prefix, self.name, length, self.mode, self.seq, self.date, comment, parent)
     }
 }
 
@@ -102,59 +99,19 @@ mod tests {
 
     #[test]
     fn exec_recursion_test() {
-        let p1 = Rc::new(RefCell::new(Password::new(
-            None,
-            "p1".to_string(),
-            None,
-            Mode::Regular,
-            99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
-            None,
-        )));
+        let p1 = Rc::new(RefCell::new(Password::new(None, "p1".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(), None)));
 
         p1.borrow_mut().parent = Some(p1.clone());
         fix_password_recursion(p1.clone());
         assert_eq!(p1.borrow().parent, None);
 
-        let p2 = Rc::new(RefCell::new(Password::new(
-            None,
-            "p2".to_string(),
-            None,
-            Mode::Regular,
-            99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
-            None,
-        )));
+        let p2 = Rc::new(RefCell::new(Password::new(None, "p2".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(), None)));
         p2.borrow_mut().parent = Some(p1.clone());
-        let p3 = Rc::new(RefCell::new(Password::new(
-            None,
-            "p3".to_string(),
-            None,
-            Mode::Regular,
-            99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
-            None,
-        )));
+        let p3 = Rc::new(RefCell::new(Password::new(None, "p3".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(), None)));
         p3.borrow_mut().parent = Some(p2.clone());
-        let p4 = Rc::new(RefCell::new(Password::new(
-            None,
-            "p4".to_string(),
-            None,
-            Mode::Regular,
-            99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
-            None,
-        )));
+        let p4 = Rc::new(RefCell::new(Password::new(None, "p4".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(), None)));
         p4.borrow_mut().parent = Some(p3.clone());
-        let p5 = Rc::new(RefCell::new(Password::new(
-            None,
-            "p5".to_string(),
-            None,
-            Mode::Regular,
-            99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
-            None,
-        )));
+        let p5 = Rc::new(RefCell::new(Password::new(None, "p5".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(), None)));
         p5.borrow_mut().parent = Some(p4.clone());
 
         p1.borrow_mut().parent = Some(p3.clone());

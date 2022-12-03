@@ -178,14 +178,8 @@ mod tests {
             db.insert(pwd1.borrow().name.clone(), pwd1.clone());
             db
         });
-        assert_eq!(
-            LKEval::new(Command::Ls, lk.clone()).eval(),
-            LKPrint::new(vec!["t1 R 99 2022-12-30 comment".to_string()], false, lk.clone())
-        );
-        assert_eq!(
-            LKEval::new(Command::Quit, lk.clone()).eval(),
-            LKPrint::new(vec!["Bye!".to_string()], true, lk.clone())
-        );
+        assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(), LKPrint::new(vec!["t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
+        assert_eq!(LKEval::new(Command::Quit, lk.clone()).eval(), LKPrint::new(vec!["Bye!".to_string()], true, lk.clone()));
         let pwd2 = Rc::new(RefCell::new(Password {
             name: Rc::new("t2".to_string()),
             prefix: None,
@@ -204,11 +198,7 @@ mod tests {
         });
         assert_eq!(
             LKEval::new(Command::Ls, lk.clone()).eval(),
-            LKPrint::new(
-                vec!["t1 R 99 2022-12-30 comment".to_string(), "t2 R 99 2022-12-31 bli blup".to_string()],
-                false,
-                lk.clone()
-            )
+            LKPrint::new(vec!["t1 R 99 2022-12-30 comment".to_string(), "t2 R 99 2022-12-31 bli blup".to_string()], false, lk.clone())
         );
     }
 }
