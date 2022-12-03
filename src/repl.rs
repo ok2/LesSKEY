@@ -1,5 +1,6 @@
 use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
+use home::home_dir;
 
 use crate::structs::{LKErr, Command, LK};
 use crate::parser::command_parser;
@@ -27,14 +28,23 @@ pub struct LKPrint {
 
 impl LKRead {
   pub fn new(rl: Editor::<()>, prompt: String, state: Rc<RefCell<LK>>) -> Self {
-     Self { rl, prompt, state, cmd: "".to_string() }
+    Self { rl, prompt, state, cmd: "".to_string() }
   }
 
   pub fn read(&mut self) -> LKEval {
+    let history_file_path = home_dir().unwrap().join(".lesskey_history");
+    let history_file = history_file_path.as_path().to_str().unwrap();
+    self.rl.clear_history();
+    match self.rl.load_history(&history_file) {
+      Ok(_) => (),
+      Err(_) => { self.rl.add_history_entry("ls"); () }
+    }
     self.cmd = match self.rl.readline(&*self.prompt) {
       Ok(str) => str,
       Err(err) => return LKEval::new(Command::Error(LKErr::ReadError(err.to_string())), self.state.clone()),
     };
+    self.rl.add_history_entry(self.cmd.as_str());
+    match self.rl.save_history(&history_file) { Ok(_) => (), Err(_) => () }
     match command_parser::cmd(self.cmd.as_str()) {
       Ok(cmd) => LKEval::new(cmd, self.state.clone()),
       Err(err) => LKEval::new(Command::Error(LKErr::ParseError(err)), self.state.clone()),
