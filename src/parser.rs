@@ -16,7 +16,6 @@ peg::parser! {
             / mv_cmd()
             / comment_cmd()
         ) { c }
-        pub rule name() -> Password = name:(jname() / pname() / mname() / sname()) { name }
 
         rule _() -> &'input str = s:$((" " / "\t" / "\r" / "\n")+) { s }
         rule comment() -> String = _ c:$([' '..='~']+) { c.to_string() }
@@ -31,6 +30,7 @@ peg::parser! {
         { Password::new(Some(pr), pn, pl, pm, 99, pd, pc) }
         rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(None, pn, pl, pm, 99, pd, pc) }
+        pub rule name() -> Password = name:(jname() / pname() / mname() / sname())? {? match name { Some(n) => Ok(n), None => Err("failed to parse password description") } }
 
         rule date() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
             let year:  i32 = match y.parse() { Ok(n) => n, Err(_) => return Err("year") };
@@ -59,13 +59,13 @@ peg::parser! {
             }
         }
         rule mode() -> Mode = m:(umode() / rmode()) { m }
-        rule help_cmd() -> Command<'input> = "help" { Command::Help }
-        rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
-        rule ls_cmd() -> Command<'input> = "ls" { Command::Ls }
-        rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
+        rule help_cmd() -> Command<'input> = "h" { Command::Help }
+        rule quit_cmd() -> Command<'input> = "q" { Command::Quit }
+        rule ls_cmd() -> Command<'input> = "l" { Command::Ls }
+        rule add_cmd() -> Command<'input> = "a" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
-        rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
-        rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
+        rule mv_cmd() -> Command<'input> = "m" _ name:word() _ folder:word() { Command::Mv(name, folder) }
+        rule comment_cmd() -> Command<'input> = "c" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
 }
 
