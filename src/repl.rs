@@ -2,7 +2,8 @@ use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
 use home::home_dir;
 
-use crate::structs::{LKErr, Command, LK};
+use crate::lk::LK;
+use crate::structs::{LKErr, Command};
 use crate::parser::command_parser;
 
 #[derive(Debug)]

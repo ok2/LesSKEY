@@ -4,13 +4,14 @@ extern crate lazy_static;
 mod structs;
 mod parser;
 mod repl;
+mod lk;
 
 use std::{cell::RefCell, rc::Rc};
 use std::collections::HashMap;
 
 use rustyline::Editor;
 
-use crate::structs::LK;
+use crate::lk::LK;
 use crate::repl::LKRead;
 
 pub fn main() {
