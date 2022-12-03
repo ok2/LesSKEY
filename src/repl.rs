@@ -51,12 +51,7 @@ impl LKRead {
         }
         self.cmd = match self.rl.readline(&*self.prompt) {
             Ok(str) => str,
-            Err(err) => {
-                return LKEval::new(
-                    Command::Error(LKErr::ReadError(err.to_string())),
-                    self.state.clone(),
-                )
-            }
+            Err(err) => return LKEval::new(Command::Error(LKErr::ReadError(err.to_string())), self.state.clone()),
         };
         self.rl.add_history_entry(self.cmd.as_str());
         match self.rl.save_history(&history_file) {
@@ -98,10 +93,7 @@ impl<'a> LKEval<'a> {
                 if self.state.borrow().db.get(&name.borrow().name).is_some() {
                     out.push("error: password already exist".to_string());
                 } else {
-                    self.state
-                        .borrow_mut()
-                        .db
-                        .insert(name.borrow().name.clone(), name.clone());
+                    self.state.borrow_mut().db.insert(name.borrow().name.clone(), name.clone());
                     self.state.borrow().fix_hierarchy();
                 }
             }
@@ -170,10 +162,7 @@ mod tests {
     #[test]
     fn exec_cmds_basic() {
         let lk = Rc::new(RefCell::new(LK::new()));
-        assert_eq!(
-            LKEval::new(Command::Ls, lk.clone()).eval(),
-            LKPrint::new(vec![], false, lk.clone())
-        );
+        assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
         let pwd1 = Rc::new(RefCell::new(Password {
             name: Rc::new("t1".to_string()),
             prefix: None,
@@ -184,25 +173,14 @@ mod tests {
             comment: Some("comment".to_string()),
             parent: None,
         }));
-        assert_eq!(
-            LKEval::new(Command::Add(pwd1.clone()), lk.clone())
-                .eval()
-                .state
-                .borrow()
-                .db,
-            {
-                let mut db = HashMap::new();
-                db.insert(pwd1.borrow().name.clone(), pwd1.clone());
-                db
-            }
-        );
+        assert_eq!(LKEval::new(Command::Add(pwd1.clone()), lk.clone()).eval().state.borrow().db, {
+            let mut db = HashMap::new();
+            db.insert(pwd1.borrow().name.clone(), pwd1.clone());
+            db
+        });
         assert_eq!(
             LKEval::new(Command::Ls, lk.clone()).eval(),
-            LKPrint::new(
-                vec!["t1 R 99 2022-12-30 comment".to_string()],
-                false,
-                lk.clone()
-            )
+            LKPrint::new(vec!["t1 R 99 2022-12-30 comment".to_string()], false, lk.clone())
         );
         assert_eq!(
             LKEval::new(Command::Quit, lk.clone()).eval(),
@@ -218,26 +196,16 @@ mod tests {
             comment: Some("bli blup".to_string()),
             parent: None,
         }));
-        assert_eq!(
-            LKEval::new(Command::Add(pwd2.clone()), lk.clone())
-                .eval()
-                .state
-                .borrow()
-                .db,
-            {
-                let mut db = HashMap::new();
-                db.insert(pwd1.borrow().name.clone(), pwd1.clone());
-                db.insert(pwd2.borrow().name.clone(), pwd2.clone());
-                db
-            }
-        );
+        assert_eq!(LKEval::new(Command::Add(pwd2.clone()), lk.clone()).eval().state.borrow().db, {
+            let mut db = HashMap::new();
+            db.insert(pwd1.borrow().name.clone(), pwd1.clone());
+            db.insert(pwd2.borrow().name.clone(), pwd2.clone());
+            db
+        });
         assert_eq!(
             LKEval::new(Command::Ls, lk.clone()).eval(),
             LKPrint::new(
-                vec![
-                    "t1 R 99 2022-12-30 comment".to_string(),
-                    "t2 R 99 2022-12-31 bli blup".to_string()
-                ],
+                vec!["t1 R 99 2022-12-30 comment".to_string(), "t2 R 99 2022-12-31 bli blup".to_string()],
                 false,
                 lk.clone()
             )

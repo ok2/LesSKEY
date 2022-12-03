@@ -25,15 +25,7 @@ pub struct Password {
 }
 
 impl Password {
-    pub fn new(
-        prefix: Prefix,
-        name: Name,
-        length: Length,
-        mode: Mode,
-        seq: Seq,
-        date: Date,
-        comment: Comment,
-    ) -> Password {
+    pub fn new(prefix: Prefix, name: Name, length: Length, mode: Mode, seq: Seq, date: Date, comment: Comment) -> Password {
         Password {
             prefix,
             name: Rc::new(name),

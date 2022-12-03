@@ -76,9 +76,7 @@ mod tests {
     #[test]
     fn parse_password_test() {
         assert_eq!(
-            command_parser::name(
-                "ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"
-            ),
+            command_parser::name("ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
                 name: Rc::new("ableton89".to_string()),
                 parent: None,
@@ -91,9 +89,7 @@ mod tests {
             })
         );
         assert_eq!(
-            command_parser::name(
-                "ableton89 U 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"
-            ),
+            command_parser::name("ableton89 U 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
                 name: Rc::new("ableton89".to_string()),
                 parent: None,
@@ -119,9 +115,7 @@ mod tests {
             })
         );
         assert_eq!(
-            command_parser::name(
-                "#W9 ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"
-            ),
+            command_parser::name("#W9 ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
                 name: Rc::new("ableton89".to_string()),
                 parent: None,
@@ -134,9 +128,7 @@ mod tests {
             })
         );
         assert_eq!(
-            command_parser::name(
-                "#W9 ableton89 N 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"
-            ),
+            command_parser::name("#W9 ableton89 N 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
                 name: Rc::new("ableton89".to_string()),
                 parent: None,
@@ -149,9 +141,7 @@ mod tests {
             })
         );
         assert_eq!(
-            command_parser::name(
-                "#W9 ableton89 UN 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"
-            ),
+            command_parser::name("#W9 ableton89 UN 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
                 name: Rc::new("ableton89".to_string()),
                 parent: None,
