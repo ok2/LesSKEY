@@ -105,7 +105,11 @@ impl<'a> LKEval<'a> {
                     }
                 }
                 None => out.push("error: password not found".to_string()),
-            },
+            }
+            Command::Rm(name) => match self.state.borrow_mut().db.remove(name) {
+                Some(pwd) => out.push(format!("removed {}", pwd.borrow().name)),
+                None => out.push("error: password not found".to_string()),
+            }
             Command::Help => {
                 out.push("HELP".to_string());
             }
@@ -131,7 +135,7 @@ impl<'a> LKEval<'a> {
                 LKErr::ParseError(e) => out.push(e.to_string()),
                 LKErr::ReadError(e) => out.push(e.to_string()),
                 LKErr::Error(e) => out.push(format!("error: {}", e.to_string())),
-            },
+            }
         }
 
         LKPrint::new(out, quit, self.state.clone())

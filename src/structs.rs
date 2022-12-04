@@ -15,6 +15,7 @@ pub enum Command<'a> {
     Add(PasswordRef),
     Ls,
     Mv(Name, Name),
+    Rm(Name),
     Comment(Name, Comment),
     Error(LKErr<'a>),
     Help,

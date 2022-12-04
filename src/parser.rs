@@ -14,6 +14,7 @@ peg::parser! {
             / error_cmd()
             / ls_cmd()
             / mv_cmd()
+            / rm_cmd()
             / comment_cmd()
         ) { c }
 
@@ -65,6 +66,7 @@ peg::parser! {
         rule add_cmd() -> Command<'input> = "a" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "m" _ name:word() _ folder:word() { Command::Mv(name, folder) }
+        rule rm_cmd() -> Command<'input> = "r" _ name:word() { Command::Rm(name) }
         rule comment_cmd() -> Command<'input> = "c" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
 }
