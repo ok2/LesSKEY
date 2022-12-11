@@ -1,4 +1,5 @@
 use crate::structs::Mode;
+use crate::skey::SKey;
 use chrono::naive::NaiveDate;
 use std::{cell::RefCell, rc::Rc};
 
@@ -36,6 +37,35 @@ impl Password {
             parent: None,
             seq,
         }
+    }
+
+    pub fn encode(&self, secret: &str) -> String {
+        let skey = SKey::new(&self.name, self.seq, secret);
+        let (sep, len) = match (&self.length, &self.mode) {
+            (Some(n), Mode::NoSpace | Mode::NoSpaceUpcase) => ("", n),
+            (Some(n), Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase) => ("", n),
+            (Some(n), _) => ("", n),
+            (None, Mode::NoSpace | Mode::NoSpaceUpcase) => ("-", &0_u32),
+            (None, Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase) => ("", &0_u32),
+            (None, _) => (" ", &0_u32),
+        };
+        let result = match self.mode {
+            Mode::Regular => skey.to_words().join(sep),
+            Mode::RegularUpcase => skey.to_words().join(sep).to_uppercase(),
+            Mode::NoSpace => skey.to_words().join(sep),
+            Mode::NoSpaceUpcase => skey.to_words().join(sep).to_uppercase(),
+            Mode::Hex => skey.to_hex(),
+            Mode::HexUpcase => skey.to_hex().to_uppercase(),
+            Mode::Base64 => skey.to_b64(),
+            Mode::Base64Upcase => skey.to_b64().to_uppercase(),
+            Mode::Decimal => skey.to_dec().map(|v| v.to_string()).join(sep),
+        };
+        let result = match &self.prefix {
+            Some(p) => (p.to_owned() + sep + &result).to_string(),
+            None => result,
+        };
+        if len > &0_u32 { result.chars().take(*len as usize).collect() }
+        else { result }
     }
 }
 
@@ -117,5 +147,51 @@ mod tests {
         p1.borrow_mut().parent = Some(p3.clone());
         fix_password_recursion(p5.clone());
         assert_eq!(p3.borrow().parent, None);
+    }
+
+    #[test]
+    fn exec_encode_test() {
+        let sec = "my secret";
+        let dat = NaiveDate::from_ymd_opt(2022, 12, 3).unwrap();
+
+        let mut pwd = Password::new(None, "test1".to_string(), None, Mode::Regular, 99, dat, None);
+        assert_eq!(pwd.encode(sec), "ross beau week held yoga anti");
+        pwd.mode = Mode::Decimal;
+        assert_eq!(pwd.encode(sec), "1684 680 1995 1203 2046 619");
+        pwd.mode = Mode::RegularUpcase;
+        assert_eq!(pwd.encode(sec), "ROSS BEAU WEEK HELD YOGA ANTI");
+        pwd.mode = Mode::Regular;
+        pwd.prefix = Some("#Q3a".to_string());
+        assert_eq!(pwd.encode(sec), "#Q3a ross beau week held yoga anti");
+        pwd.mode = Mode::NoSpace;
+        assert_eq!(pwd.encode(sec), "#Q3a-ross-beau-week-held-yoga-anti");
+        pwd.mode = Mode::Base64;
+        assert_eq!(pwd.encode(sec), "#Q3a0oqj5cs//Jo");
+        pwd.mode = Mode::Base64Upcase;
+        assert_eq!(pwd.encode(sec), "#Q3a0OQJ5CS//JO");
+        pwd.mode = Mode::Hex;
+        assert_eq!(pwd.encode(sec), "#Q3ae5a38ad29afc3fcb");
+        pwd.mode = Mode::HexUpcase;
+        assert_eq!(pwd.encode(sec), "#Q3aE5A38AD29AFC3FCB");
+        pwd.mode = Mode::Decimal;
+        assert_eq!(pwd.encode(sec), "#Q3a 1684 680 1995 1203 2046 619");
+
+        let mut pwd = Password::new(None, "test1".to_string(), Some(6), Mode::Regular, 99, dat, None);
+        assert_eq!(pwd.encode(sec), "rossbe");
+        pwd.mode = Mode::Decimal;
+        assert_eq!(pwd.encode(sec), "168468");
+        pwd.mode = Mode::Regular;
+        pwd.prefix = Some("#Q3a".to_string());
+        assert_eq!(pwd.encode(sec), "#Q3aro");
+        pwd.mode = Mode::NoSpace;
+        assert_eq!(pwd.encode(sec), "#Q3aro");
+        pwd.mode = Mode::Base64;
+        assert_eq!(pwd.encode(sec), "#Q3a0o");
+        pwd.mode = Mode::Hex;
+        assert_eq!(pwd.encode(sec), "#Q3ae5");
+        pwd.mode = Mode::Decimal;
+        assert_eq!(pwd.encode(sec), "#Q3a16");
+        pwd.length = Some(10);
+        assert_eq!(pwd.encode(sec), "#Q3a168468");
     }
 }
