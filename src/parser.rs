@@ -3,6 +3,7 @@ extern crate peg;
 use crate::password::Password;
 use crate::structs::{Command, LKErr, Mode};
 use chrono::naive::NaiveDate;
+use chrono::Local;
 use std::{cell::RefCell, rc::Rc};
 
 peg::parser! {
@@ -31,7 +32,9 @@ peg::parser! {
         { Password::new(Some(pr), pn, pl, pm, 99, pd, pc) }
         rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(None, pn, pl, pm, 99, pd, pc) }
-        pub rule name() -> Password = name:(jname() / pname() / mname() / sname())? {? match name { Some(n) => Ok(n), None => Err("failed to parse password description") } }
+        rule ssname() -> Password = &(word()) pn:word()
+        { Password::new(None, pn, None, Mode::NoSpaceCamel, 99, Local::now().naive_local().date(), None) }
+        pub rule name() -> Password = name:(jname() / pname() / mname() / sname() / ssname())? {? match name { Some(n) => Ok(n), None => Err("failed to parse password description") } }
 
         rule date() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
             let year:  i32 = match y.parse() { Ok(n) => n, Err(_) => return Err("year") };
