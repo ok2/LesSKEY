@@ -5,11 +5,12 @@ use std::collections::HashMap;
 #[derive(PartialEq, Debug)]
 pub struct LK {
     pub db: HashMap<NameRef, PasswordRef>,
+    pub ls: HashMap<String, PasswordRef>,
 }
 
 impl LK {
     pub fn new() -> Self {
-        Self { db: HashMap::new() }
+        Self { db: HashMap::new(), ls: HashMap::new() }
     }
 
     pub fn fix_hierarchy(&self) {
