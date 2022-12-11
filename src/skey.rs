@@ -1,24 +1,16 @@
-use crate::password::PasswordRef;
 use sha1::{Digest, Sha1};
-use std::default::Default;
-use std::rc::Rc;
 use std::vec::Vec;
 
-pub type Secret = Rc<String>;
 type SKeyOTP = Vec<Vec<u8>>;
 
 pub struct SKey {
-    password: PasswordRef,
-    secret: Secret,
     otp: SKeyOTP,
 }
 
 impl SKey {
-    pub fn new(password: PasswordRef, secret: Secret) -> Self {
+    pub fn new(password: &str, seq: u32, secret: &str) -> Self {
         Self {
-            password: password.clone(),
-            secret: secret.clone(),
-            otp: Self::otp_sha1(password, secret),
+            otp: Self::otp_sha1(password, seq, secret),
         }
     }
 
@@ -38,11 +30,10 @@ impl SKey {
         z
     }
 
-    fn otp_sha1(password: PasswordRef, secret: Secret) -> SKeyOTP {
-        let pwd = password.borrow();
-        let data = (pwd.name.as_ref().to_string() + secret.as_ref()).to_owned().into_bytes();
+    fn otp_sha1(password: &str, seq: u32, secret: &str) -> SKeyOTP {
+        let data = format!("{}{}", password, secret).to_owned().into_bytes();
         let mut otp = vec![data];
-        for _ in 0..pwd.seq + 1 {
+        for _ in 0..seq + 1 {
             otp = Self::sha1(&otp);
         }
         let x = u32::from_le_bytes(otp[0].as_slice().try_into().unwrap());
@@ -71,6 +62,31 @@ impl SKey {
 
     pub fn to_words(&self) -> [&str; 6] {
         self.to_dec().map(|x| WORDS[x as usize])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calc_test() {
+        assert_eq!(SKey::sha1(&vec![vec![116, 101, 115, 116, 49, 109, 121, 32, 115, 101, 99, 114, 101, 116]]), [[141, 231, 26, 167], [106, 250, 4, 49]]);
+        assert_eq!(SKey::sha1(&vec![vec![141, 231, 26, 167], vec![106, 250, 4, 49]]), [[217, 8, 211, 18], [165, 49, 161, 222]]);
+
+        let pwd = "test1";
+        let sec = "my secret";
+        assert_eq!(SKey::otp_sha1(pwd.clone(), 99, &sec), [[229, 163, 138, 210], [154, 252, 63, 203]]);
+
+        let skey = SKey::new(pwd.clone(), 99, &sec);
+        assert_eq!(skey.to_dec(), [1684, 680, 1995, 1203, 2046, 619]);
+        assert_eq!(skey.to_words(), ["ross", "beau", "week", "held", "yoga", "anti"]);
+
+        let skey = SKey::new(pwd.clone(), 30, &sec);
+        assert_eq!(skey.to_dec(), [949, 415, 1008, 1225, 809, 165]);
+
+        let skey = SKey::new(pwd.clone(), 300, &sec);
+        assert_eq!(skey.to_dec(), [1375, 1256, 2010, 333, 33, 893]);
     }
 }
 
@@ -166,34 +182,3 @@ const WORDS: [&str; 2048] = [
     "when", "whet", "whoa", "whom", "wick", "wife", "wild", "will", "wind", "wine", "wing", "wink", "wino", "wire", "wise", "wish", "with", "wolf", "wont", "wood", "wool", "word",
     "wore", "work", "worm", "worn", "wove", "writ", "wynn", "yale", "yang", "yank", "yard", "yarn", "yawl", "yawn", "yeah", "year", "yell", "yoga", "yoke",
 ];
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::password::Password;
-    use crate::structs::Mode;
-    use chrono::naive::NaiveDate;
-    use std::cell::RefCell;
-
-    #[test]
-    fn calc_test() {
-        assert_eq!(SKey::sha1(&vec![vec![116, 101, 115, 116, 49, 109, 121, 32, 115, 101, 99, 114, 101, 116]]), [[141, 231, 26, 167], [106, 250, 4, 49]]);
-        assert_eq!(SKey::sha1(&vec![vec![141, 231, 26, 167], vec![106, 250, 4, 49]]), [[217, 8, 211, 18], [165, 49, 161, 222]]);
-
-        let pwd = Rc::new(RefCell::new(Password::new(None, "test1".to_string(), None, Mode::Decimal, 99, NaiveDate::from_ymd_opt(2022, 10, 1).unwrap(), None)));
-        let sec = Rc::new("my secret".to_string());
-        assert_eq!(SKey::otp_sha1(pwd.clone(), sec.clone()), [[229, 163, 138, 210], [154, 252, 63, 203]]);
-
-        let skey = SKey::new(pwd.clone(), sec.clone());
-        assert_eq!(skey.to_dec(), [1684, 680, 1995, 1203, 2046, 619]);
-        assert_eq!(skey.to_words(), ["ross", "beau", "week", "held", "yoga", "anti"]);
-
-        pwd.borrow_mut().seq = 30;
-        let skey = SKey::new(pwd.clone(), sec.clone());
-        assert_eq!(skey.to_dec(), [949, 415, 1008, 1225, 809, 165]);
-
-        pwd.borrow_mut().seq = 300;
-        let skey = SKey::new(pwd.clone(), sec.clone());
-        assert_eq!(skey.to_dec(), [1375, 1256, 2010, 333, 33, 893]);
-    }
-}
