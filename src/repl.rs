@@ -5,7 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
-use crate::structs::{Command, LKErr};
+use crate::structs::{Command, LKErr, Radix};
 
 #[derive(Debug)]
 pub struct LKRead {
@@ -74,6 +74,14 @@ impl<'a> LKEval<'a> {
         Self { cmd, state }
     }
 
+    fn cmd_ls(&mut self, out: &mut Vec<String>) {
+        let mut counter = 0;
+        for (_, name) in &self.state.borrow().db {
+            out.push(format!("{:>2} {}", Radix::new(counter, 36).unwrap().to_string(), name.borrow().to_string()));
+            counter += 1;
+        }
+    }
+
     pub fn eval(&mut self) -> LKPrint {
         let mut out: Vec<String> = vec![];
         let mut quit: bool = false;
@@ -83,12 +91,7 @@ impl<'a> LKEval<'a> {
                 out.push("Bye!".to_string());
                 quit = true;
             }
-            Command::Ls => {
-                for (_, name) in &self.state.borrow().db {
-                    out.push(name.borrow().to_string());
-                }
-                out.sort();
-            }
+            Command::Ls => self.cmd_ls(&mut out),
             Command::Add(name) => {
                 if self.state.borrow().db.get(&name.borrow().name).is_some() {
                     out.push("error: password already exist".to_string());
