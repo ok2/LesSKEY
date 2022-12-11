@@ -48,10 +48,11 @@ peg::parser! {
                 _ => Err("unknown mode"),
             }
         }
-        rule rmode() -> Mode = m:$("R" / "r" / "U" / "u" / "N" / "n" / "H" / "h" / "B" / "b" / "D" / "d") {?
+        rule rmode() -> Mode = m:$("R" / "r" / "U" / "u" / "N" / "n" / "C" / "H" / "h" / "B" / "b" / "D" / "d") {?
             match m.to_uppercase().as_str() {
                 "R" => Ok(Mode::Regular),
                 "N" => Ok(Mode::NoSpace),
+                "C" => Ok(Mode::NoSpaceCamel),
                 "U" => Ok(Mode::RegularUpcase),
                 "H" => Ok(Mode::Hex),
                 "B" => Ok(Mode::Base64),
@@ -227,6 +228,19 @@ mod tests {
                 parent: None,
                 prefix: None,
                 mode: Mode::Decimal,
+                length: Some(20),
+                seq: 98,
+                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                comment: Some("a b c".to_string())
+            })
+        );
+        assert_eq!(
+            command_parser::name("ableton89 20C 98 2020-12-09 a b c"),
+            Ok(Password {
+                name: Rc::new("ableton89".to_string()),
+                parent: None,
+                prefix: None,
+                mode: Mode::NoSpaceCamel,
                 length: Some(20),
                 seq: 98,
                 date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),

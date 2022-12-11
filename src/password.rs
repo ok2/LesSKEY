@@ -46,7 +46,7 @@ impl Password {
             (Some(n), Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase) => ("", n),
             (Some(n), _) => ("", n),
             (None, Mode::NoSpace | Mode::NoSpaceUpcase) => ("-", &0_u32),
-            (None, Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase) => ("", &0_u32),
+            (None, Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase | Mode::NoSpaceCamel) => ("", &0_u32),
             (None, _) => (" ", &0_u32),
         };
         let result = match self.mode {
@@ -54,6 +54,7 @@ impl Password {
             Mode::RegularUpcase => skey.to_words().join(sep).to_uppercase(),
             Mode::NoSpace => skey.to_words().join(sep),
             Mode::NoSpaceUpcase => skey.to_words().join(sep).to_uppercase(),
+            Mode::NoSpaceCamel => camel_case(skey.to_words()),
             Mode::Hex => skey.to_hex(),
             Mode::HexUpcase => skey.to_hex().to_uppercase(),
             Mode::Base64 => skey.to_b64(),
@@ -89,6 +90,18 @@ impl std::string::ToString for Password {
         };
         format!("{}{} {}{} {} {}{}{}", prefix, self.name, length, self.mode, self.seq, self.date, comment, parent)
     }
+}
+
+fn camel_case(words: [&str; 6]) -> String {
+    let mut camel_case_string = String::new();
+
+    for word in words.iter() {
+        let mut chars = word.chars();
+        camel_case_string.push(chars.next().unwrap().to_uppercase().next().unwrap());
+        camel_case_string.extend(chars);
+    }
+
+    camel_case_string
 }
 
 pub fn fix_password_recursion(entry: Rc<RefCell<Password>>) {
@@ -156,6 +169,8 @@ mod tests {
 
         let mut pwd = Password::new(None, "test1".to_string(), None, Mode::Regular, 99, dat, None);
         assert_eq!(pwd.encode(sec), "ross beau week held yoga anti");
+        pwd.mode = Mode::NoSpaceCamel;
+        assert_eq!(pwd.encode(sec), "RossBeauWeekHeldYogaAnti");
         pwd.mode = Mode::Decimal;
         assert_eq!(pwd.encode(sec), "1684 680 1995 1203 2046 619");
         pwd.mode = Mode::RegularUpcase;
@@ -163,6 +178,8 @@ mod tests {
         pwd.mode = Mode::Regular;
         pwd.prefix = Some("#Q3a".to_string());
         assert_eq!(pwd.encode(sec), "#Q3a ross beau week held yoga anti");
+        pwd.mode = Mode::NoSpaceCamel;
+        assert_eq!(pwd.encode(sec), "#Q3aRossBeauWeekHeldYogaAnti");
         pwd.mode = Mode::NoSpace;
         assert_eq!(pwd.encode(sec), "#Q3a-ross-beau-week-held-yoga-anti");
         pwd.mode = Mode::Base64;
@@ -178,6 +195,8 @@ mod tests {
 
         let mut pwd = Password::new(None, "test1".to_string(), Some(6), Mode::Regular, 99, dat, None);
         assert_eq!(pwd.encode(sec), "rossbe");
+        pwd.mode = Mode::NoSpaceCamel;
+        assert_eq!(pwd.encode(sec), "RossBe");
         pwd.mode = Mode::Decimal;
         assert_eq!(pwd.encode(sec), "168468");
         pwd.mode = Mode::Regular;
@@ -193,5 +212,7 @@ mod tests {
         assert_eq!(pwd.encode(sec), "#Q3a16");
         pwd.length = Some(10);
         assert_eq!(pwd.encode(sec), "#Q3a168468");
+        pwd.mode = Mode::NoSpaceCamel;
+        assert_eq!(pwd.encode(sec), "#Q3aRossBe");
     }
 }
