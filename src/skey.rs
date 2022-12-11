@@ -1,5 +1,7 @@
 use sha1::{Digest, Sha1};
 use std::vec::Vec;
+use std::fmt::Write;
+use base64;
 
 type SKeyOTP = Vec<Vec<u8>>;
 
@@ -63,6 +65,21 @@ impl SKey {
     pub fn to_words(&self) -> [&str; 6] {
         self.to_dec().map(|x| WORDS[x as usize])
     }
+
+    pub fn to_hex(&self) -> String {
+        let mut hex_string = String::new();
+        for inner_vec in &self.otp {
+            for byte in inner_vec {
+                write!(hex_string, "{:0>2x}", byte).expect("Failed to write to string");
+            }
+        }
+        hex_string
+    }
+
+    pub fn to_b64(&self) -> String {
+        let flat_vec: Vec<u8> = self.otp.iter().map(|v| { let mut v: Vec<u8> = v.clone(); v.reverse(); v }).flatten().collect();
+        base64::encode(flat_vec).trim_end_matches('=').to_string()
+    }
 }
 
 #[cfg(test)]
@@ -70,22 +87,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn calc_test() {
+    fn encoding_test() {
         assert_eq!(SKey::sha1(&vec![vec![116, 101, 115, 116, 49, 109, 121, 32, 115, 101, 99, 114, 101, 116]]), [[141, 231, 26, 167], [106, 250, 4, 49]]);
         assert_eq!(SKey::sha1(&vec![vec![141, 231, 26, 167], vec![106, 250, 4, 49]]), [[217, 8, 211, 18], [165, 49, 161, 222]]);
 
         let pwd = "test1";
         let sec = "my secret";
-        assert_eq!(SKey::otp_sha1(pwd.clone(), 99, &sec), [[229, 163, 138, 210], [154, 252, 63, 203]]);
+        assert_eq!(SKey::otp_sha1(&pwd, 99, &sec), [[229, 163, 138, 210], [154, 252, 63, 203]]);
 
-        let skey = SKey::new(pwd.clone(), 99, &sec);
+        let skey = SKey::new(&pwd, 99, &sec);
         assert_eq!(skey.to_dec(), [1684, 680, 1995, 1203, 2046, 619]);
         assert_eq!(skey.to_words(), ["ross", "beau", "week", "held", "yoga", "anti"]);
+        assert_eq!(skey.to_hex(), "e5a38ad29afc3fcb");
+        assert_eq!(SKey::new("test3", 99, &sec).to_hex(), "0330ce0b90086467");
+        assert_eq!(skey.to_b64(), "0oqj5cs//Jo");
+        assert_eq!(SKey::new("test3", 99, &sec).to_b64(), "C84wA2dkCJA");
+        assert_eq!(SKey::new("test5", 99, &sec).to_b64(), "FeXiWc7HWEY");
 
-        let skey = SKey::new(pwd.clone(), 30, &sec);
+        let skey = SKey::new(&pwd, 30, &sec);
         assert_eq!(skey.to_dec(), [949, 415, 1008, 1225, 809, 165]);
 
-        let skey = SKey::new(pwd.clone(), 300, &sec);
+        let skey = SKey::new(&pwd, 300, &sec);
         assert_eq!(skey.to_dec(), [1375, 1256, 2010, 333, 33, 893]);
     }
 }
