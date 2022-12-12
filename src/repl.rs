@@ -75,9 +75,14 @@ impl<'a> LKEval<'a> {
     }
 
     fn cmd_ls(&mut self, out: &mut Vec<String>) {
-        let mut counter = 0;
+        let mut tmp: Vec<String> = vec![];
         for (_, name) in &self.state.borrow().db {
-            out.push(format!("{:>2} {}", Radix::new(counter, 36).unwrap().to_string(), name.borrow().to_string()));
+            tmp.push(name.borrow().to_string());
+        }
+        tmp.sort();
+        let mut counter = 0;
+        for line in tmp {
+            out.push(format!("{:>3} {}", Radix::new(counter, 36).unwrap().to_string(), line));
             counter += 1;
         }
     }
