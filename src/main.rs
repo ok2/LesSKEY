@@ -5,8 +5,8 @@ mod lk;
 mod parser;
 mod password;
 mod repl;
-mod structs;
 mod skey;
+mod structs;
 
 use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};

@@ -1,7 +1,7 @@
-use sha1::{Digest, Sha1};
-use std::vec::Vec;
-use std::fmt::Write;
 use base64;
+use sha1::{Digest, Sha1};
+use std::fmt::Write;
+use std::vec::Vec;
 
 type SKeyOTP = Vec<Vec<u8>>;
 
@@ -77,7 +77,16 @@ impl SKey {
     }
 
     pub fn to_b64(&self) -> String {
-        let flat_vec: Vec<u8> = self.otp.iter().map(|v| { let mut v: Vec<u8> = v.clone(); v.reverse(); v }).flatten().collect();
+        let flat_vec: Vec<u8> = self
+            .otp
+            .iter()
+            .map(|v| {
+                let mut v: Vec<u8> = v.clone();
+                v.reverse();
+                v
+            })
+            .flatten()
+            .collect();
         base64::encode(flat_vec).trim_end_matches('=').to_string()
     }
 }

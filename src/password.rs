@@ -1,5 +1,5 @@
-use crate::structs::Mode;
 use crate::skey::SKey;
+use crate::structs::Mode;
 use chrono::naive::NaiveDate;
 use std::{cell::RefCell, rc::Rc};
 
@@ -65,8 +65,11 @@ impl Password {
             Some(p) => (p.to_owned() + sep + &result).to_string(),
             None => result,
         };
-        if len > &0_u32 { result.chars().take(*len as usize).collect() }
-        else { result }
+        if len > &0_u32 {
+            result.chars().take(*len as usize).collect()
+        } else {
+            result
+        }
     }
 }
 

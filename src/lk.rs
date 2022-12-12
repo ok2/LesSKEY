@@ -10,7 +10,10 @@ pub struct LK {
 
 impl LK {
     pub fn new() -> Self {
-        Self { db: HashMap::new(), ls: HashMap::new() }
+        Self {
+            db: HashMap::new(),
+            ls: HashMap::new(),
+        }
     }
 
     pub fn fix_hierarchy(&self) {

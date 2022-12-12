@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
-use crate::password::{PasswordRef, fix_password_recursion};
+use crate::password::{fix_password_recursion, PasswordRef};
 use crate::structs::{Command, LKErr, Radix};
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ impl<'a> LKEval<'a> {
             None => match self.state.borrow().ls.get(name) {
                 Some(pwd) => Some(pwd.clone()),
                 None => None,
-            }
+            },
         }
     }
 
@@ -93,7 +93,8 @@ impl<'a> LKEval<'a> {
         self.state.borrow_mut().ls.clear();
         let mut counter = 1;
         for pwd in tmp {
-            let key = Radix::new(counter, 36).unwrap().to_string(); counter += 1;
+            let key = Radix::new(counter, 36).unwrap().to_string();
+            counter += 1;
             self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
             out.push(format!("{:>3} {}", key, pwd.borrow().to_string()));
         }
@@ -127,7 +128,10 @@ impl<'a> LKEval<'a> {
                 None => out.push("error: password not found".to_string()),
             },
             Command::Rm(name) => match self.get_password(name) {
-                Some(pwd) => { self.state.borrow_mut().db.remove(&pwd.borrow().name); out.push(format!("removed {}", pwd.borrow().name)); },
+                Some(pwd) => {
+                    self.state.borrow_mut().db.remove(&pwd.borrow().name);
+                    out.push(format!("removed {}", pwd.borrow().name));
+                }
                 None => out.push("error: password not found".to_string()),
             },
             Command::Help => {

@@ -82,7 +82,7 @@ impl fmt::Display for Radix {
         let mut used = 0;
         let negative = x < 0;
         if negative {
-            x*=-1;
+            x *= -1;
         }
         let mut x = x as u32;
         loop {
