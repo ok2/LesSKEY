@@ -74,16 +74,28 @@ impl<'a> LKEval<'a> {
         Self { cmd, state }
     }
 
+    fn get_password(&self, name: &String) -> Option<PasswordRef> {
+        match self.state.borrow().db.get(name) {
+            Some(pwd) => Some(pwd.clone()),
+            None => match self.state.borrow().ls.get(name) {
+                Some(pwd) => Some(pwd.clone()),
+                None => None,
+            }
+        }
+    }
+
     fn cmd_ls(&mut self, out: &mut Vec<String>) {
         let mut tmp: Vec<PasswordRef> = vec![];
         for (_, name) in &self.state.borrow().db {
             tmp.push(name.clone());
         }
         tmp.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
+        self.state.borrow_mut().ls.clear();
         let mut counter = 1;
         for pwd in tmp {
-            out.push(format!("{:>3} {}", Radix::new(counter, 36).unwrap().to_string(), pwd.borrow().to_string()));
-            counter += 1;
+            let key = Radix::new(counter, 36).unwrap().to_string(); counter += 1;
+            self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
+            out.push(format!("{:>3} {}", key, pwd.borrow().to_string()));
         }
     }
 
@@ -105,7 +117,7 @@ impl<'a> LKEval<'a> {
                     self.state.borrow().fix_hierarchy();
                 }
             }
-            Command::Comment(name, comment) => match self.state.borrow().db.get(name) {
+            Command::Comment(name, comment) => match self.get_password(name) {
                 Some(pwd) => {
                     pwd.borrow_mut().comment = match comment {
                         Some(c) => Some(c.to_string()),
@@ -114,8 +126,8 @@ impl<'a> LKEval<'a> {
                 }
                 None => out.push("error: password not found".to_string()),
             },
-            Command::Rm(name) => match self.state.borrow_mut().db.remove(name) {
-                Some(pwd) => out.push(format!("removed {}", pwd.borrow().name)),
+            Command::Rm(name) => match self.get_password(name) {
+                Some(pwd) => { self.state.borrow_mut().db.remove(&pwd.borrow().name); out.push(format!("removed {}", pwd.borrow().name)); },
                 None => out.push("error: password not found".to_string()),
             },
             Command::Help => {
@@ -212,5 +224,7 @@ mod tests {
             LKEval::new(Command::Ls, lk.clone()).eval(),
             LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()], false, lk.clone())
         );
+        assert_eq!(LKEval::new(Command::Rm("2".to_string()), lk.clone()).eval(), LKPrint::new(vec!["removed t2".to_string()], false, lk.clone()));
+        assert_eq!(LKEval::new(Command::Ls, lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
     }
 }
