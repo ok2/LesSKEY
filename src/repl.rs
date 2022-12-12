@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
-use crate::password::fix_password_recursion;
+use crate::password::{PasswordRef, fix_password_recursion};
 use crate::structs::{Command, LKErr, Radix};
 
 #[derive(Debug)]
@@ -75,14 +75,14 @@ impl<'a> LKEval<'a> {
     }
 
     fn cmd_ls(&mut self, out: &mut Vec<String>) {
-        let mut tmp: Vec<String> = vec![];
+        let mut tmp: Vec<PasswordRef> = vec![];
         for (_, name) in &self.state.borrow().db {
-            tmp.push(name.borrow().to_string());
+            tmp.push(name.clone());
         }
-        tmp.sort();
+        tmp.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
         let mut counter = 1;
-        for line in tmp {
-            out.push(format!("{:>3} {}", Radix::new(counter, 36).unwrap().to_string(), line));
+        for pwd in tmp {
+            out.push(format!("{:>3} {}", Radix::new(counter, 36).unwrap().to_string(), pwd.borrow().to_string()));
             counter += 1;
         }
     }
