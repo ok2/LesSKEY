@@ -16,6 +16,8 @@ peg::parser! {
             / ls_cmd()
             / mv_cmd()
             / rm_cmd()
+            / enc_cmd()
+            / pass_cmd()
             / comment_cmd()
         ) { c }
 
@@ -32,9 +34,13 @@ peg::parser! {
         { Password::new(Some(pr), pn, pl, pm, 99, pd, pc) }
         rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(None, pn, pl, pm, 99, pd, pc) }
-        rule ssname() -> Password = &(word()) pn:word()
+        rule nname() -> Password = &(word() _ num()? mode()) pn:word() _ pl:num()? pm:mode()
+        { Password::new(None, pn, pl, pm, 99, Local::now().naive_local().date(), None) }
+        rule qname() -> Password = &(word()) pn:word()
         { Password::new(None, pn, None, Mode::NoSpaceCamel, 99, Local::now().naive_local().date(), None) }
-        pub rule name() -> Password = name:(jname() / pname() / mname() / sname() / ssname())? {? match name { Some(n) => Ok(n), None => Err("failed to parse password description") } }
+        pub rule name() -> Password = name:(jname() / pname() / mname() / sname() / nname() / qname())? {?
+            match name { Some(n) => Ok(n), None => Err("failed to parse password description") }
+        }
 
         rule date() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
             let year:  i32 = match y.parse() { Ok(n) => n, Err(_) => return Err("year") };
@@ -51,7 +57,7 @@ peg::parser! {
                 _ => Err("unknown mode"),
             }
         }
-        rule rmode() -> Mode = m:$("R" / "r" / "U" / "u" / "N" / "n" / "C" / "H" / "h" / "B" / "b" / "D" / "d") {?
+        rule rmode() -> Mode = m:$("R" / "r" / "U" / "u" / "N" / "n" / "C" / "c" / "H" / "h" / "B" / "b" / "D" / "d") {?
             match m.to_uppercase().as_str() {
                 "R" => Ok(Mode::Regular),
                 "N" => Ok(Mode::NoSpace),
@@ -64,14 +70,16 @@ peg::parser! {
             }
         }
         rule mode() -> Mode = m:(umode() / rmode()) { m }
-        rule help_cmd() -> Command<'input> = "h" { Command::Help }
-        rule quit_cmd() -> Command<'input> = "q" { Command::Quit }
-        rule ls_cmd() -> Command<'input> = "l" { Command::Ls }
-        rule add_cmd() -> Command<'input> = "a" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
+        rule help_cmd() -> Command<'input> = "help" { Command::Help }
+        rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
+        rule ls_cmd() -> Command<'input> = "ls" { Command::Ls }
+        rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
-        rule mv_cmd() -> Command<'input> = "m" _ name:word() _ folder:word() { Command::Mv(name, folder) }
-        rule rm_cmd() -> Command<'input> = "r" _ name:word() { Command::Rm(name) }
-        rule comment_cmd() -> Command<'input> = "c" _ name:word() c:comment()? { Command::Comment(name, c) }
+        rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
+        rule pass_cmd() -> Command<'input> = "pass" _ name:word() { Command::Pass(name) }
+        rule enc_cmd() -> Command<'input> = "enc" _ name:word() { Command::Enc(name) }
+        rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
+        rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
 }
 

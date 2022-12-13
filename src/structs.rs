@@ -17,6 +17,8 @@ pub enum Command<'a> {
     Ls,
     Mv(Name, Name),
     Rm(Name),
+    Enc(Name),
+    Pass(Name),
     Comment(Name, Comment),
     Error(LKErr<'a>),
     Help,
@@ -108,3 +110,21 @@ impl fmt::Display for Radix {
         Ok(())
     }
 }
+
+/*
+impl fmt::Display for Radix {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let sign = if self.x < 0 { '-' } else { ' ' };
+        let mut x: u32 = self.x.abs() as u32;
+        write!(f, "{}{}", sign, (0..).map(|_| {
+                    let m = x % self.radix;
+                    x /= self.radix;
+                    (x, std::char::from_digit(m, self.radix).unwrap())
+                })
+                .take_while(|a| a.0 > 0).map(|b| b.1).collect::<String>()
+                .chars().rev().collect::<String>()
+        )?;
+        Ok(())
+    }
+}
+*/

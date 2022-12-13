@@ -1,4 +1,5 @@
 use home::home_dir;
+use rpassword::prompt_password;
 use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
 
@@ -84,7 +85,60 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn cmd_ls(&mut self, out: &mut Vec<String>) {
+    fn read_master(&self, pwd: PasswordRef) -> String {
+        let parent = match &pwd.borrow().parent {
+            Some(p) => p.borrow().name.clone(),
+            None => Rc::new("/".to_string()),
+        };
+        let secret = match self.state.borrow().secrets.get(&parent) {
+            Some(p) => Some(p.clone()),
+            None => None,
+        };
+        match (pwd.borrow().parent.clone(), secret) {
+            (_, Some(s)) => s.to_string(),
+            (None, None) => {
+                let password = prompt_password("Master: ").unwrap();
+                self.state.borrow_mut().secrets.insert(Rc::new("/".to_string()), password.clone());
+                password
+            }
+            (Some(pn), None) => {
+                let password = prompt_password(format!("Password for {}: ", pn.borrow().name)).unwrap();
+                if password.len() > 0 {
+                    self.state.borrow_mut().secrets.insert(pn.borrow().name.clone(), password.clone());
+                    password
+                } else {
+                    let master = self.read_master(pn.clone());
+                    let password = pn.borrow().encode(master.as_str());
+                    self.state.borrow_mut().secrets.insert(pn.borrow().name.clone(), password.clone());
+                    password
+                }
+            }
+        }
+    }
+
+    fn cmd_enc(&self, out: &mut Vec<String>, name: &String) {
+        let root_folder = Rc::new("/".to_string());
+        if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
+            out.push(self.state.borrow().secrets.get(&root_folder).unwrap().to_string());
+            return;
+        }
+        let pwd = match self.get_password(name) {
+            Some(p) => p.clone(),
+            None => {
+                out.push(format!("error: name {} not found", name));
+                return;
+            }
+        };
+        let name = pwd.borrow().name.clone();
+        if self.state.borrow().secrets.contains_key(&name) {
+            out.push(self.state.borrow().secrets.get(&name).unwrap().to_string());
+            return;
+        }
+        let sec = self.read_master(pwd.clone());
+        out.push(pwd.borrow().encode(sec.as_str()));
+    }
+
+    fn cmd_ls(&self, out: &mut Vec<String>) {
         let mut tmp: Vec<PasswordRef> = vec![];
         for (_, name) in &self.state.borrow().db {
             tmp.push(name.clone());
@@ -100,7 +154,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn eval(&mut self) -> LKPrint {
+    pub fn eval(&self) -> LKPrint {
         let mut out: Vec<String> = vec![];
         let mut quit: bool = false;
 
@@ -134,27 +188,38 @@ impl<'a> LKEval<'a> {
                 }
                 None => out.push("error: password not found".to_string()),
             },
+            Command::Enc(name) => self.cmd_enc(&mut out, name),
+            Command::Pass(name) => match self.get_password(name) {
+                Some(p) => {
+                    self.state.borrow_mut().secrets.insert(p.borrow().name.clone(), prompt_password(format!("Password for {}: ", p.borrow().name)).unwrap());
+                }
+                None => {
+                    if name == "/" {
+                        self.state.borrow_mut().secrets.insert(Rc::new("/".to_string()), prompt_password("Master: ").unwrap());
+                    } else {
+                        out.push(format!("error: password with name {} not found", name));
+                    }
+                }
+            },
             Command::Help => {
                 out.push("HELP".to_string());
             }
-            Command::Mv(name, folder) => {
-                for (_, tmp) in &self.state.borrow().db {
-                    if *tmp.borrow().name == *name {
-                        if folder == "/" {
-                            tmp.borrow_mut().parent = None
-                        } else {
-                            for (_, fld) in &self.state.borrow().db {
-                                if *fld.borrow().name == *folder {
-                                    tmp.borrow_mut().parent = Some(fld.clone());
-                                    fix_password_recursion(tmp.clone());
-                                    break;
-                                }
+            Command::Mv(name, folder) => match self.get_password(name) {
+                Some(pwd) => {
+                    if folder == "/" {
+                        pwd.borrow_mut().parent = None
+                    } else {
+                        match self.get_password(folder) {
+                            Some(fld) => {
+                                pwd.borrow_mut().parent = Some(fld.clone());
+                                fix_password_recursion(pwd.clone());
                             }
+                            None => out.push(format!("error: folder {} not found", folder)),
                         }
-                        break;
                     }
                 }
-            }
+                None => out.push(format!("error: password with name {} not found", name)),
+            },
             Command::Error(err) => match err {
                 LKErr::ParseError(e) => out.push(e.to_string()),
                 LKErr::ReadError(e) => out.push(e.to_string()),

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct LK {
     pub db: HashMap<NameRef, PasswordRef>,
     pub ls: HashMap<String, PasswordRef>,
+    pub secrets: HashMap<NameRef, String>,
 }
 
 impl LK {
@@ -13,6 +14,7 @@ impl LK {
         Self {
             db: HashMap::new(),
             ls: HashMap::new(),
+            secrets: HashMap::new(),
         }
     }
 
