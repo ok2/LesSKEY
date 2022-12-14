@@ -72,7 +72,7 @@ peg::parser! {
         rule mode() -> Mode = m:(umode() / rmode()) { m }
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
-        rule ls_cmd() -> Command<'input> = "ls" { Command::Ls }
+        rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }

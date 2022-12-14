@@ -1,6 +1,7 @@
 use home::home_dir;
 use rpassword::prompt_password;
 use rustyline::Editor;
+use regex::Regex;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
@@ -173,10 +174,16 @@ impl<'a> LKEval<'a> {
         };
     }
 
-    fn cmd_ls(&self, out: &mut Vec<String>) {
+    fn cmd_ls(&self, out: &mut Vec<String>, filter: String) {
+        let re = match Regex::new(&filter) {
+            Ok(re) => re,
+            Err(e) => { out.push(format!("error: failed to parse re: {:?}", e)); return; }
+        };
         let mut tmp: Vec<PasswordRef> = vec![];
         for (_, name) in &self.state.borrow().db {
-            tmp.push(name.clone());
+            if re.find(&name.borrow().to_string()).is_some() {
+                tmp.push(name.clone());
+            }
         }
         tmp.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
         self.state.borrow_mut().ls.clear();
@@ -198,7 +205,7 @@ impl<'a> LKEval<'a> {
                 out.push("Bye!".to_string());
                 quit = true;
             }
-            Command::Ls => self.cmd_ls(&mut out),
+            Command::Ls(filter) => self.cmd_ls(&mut out, filter.to_string()),
             Command::Add(name) => {
                 if self.state.borrow().db.get(&name.borrow().name).is_some() {
                     out.push("error: password already exist".to_string());
@@ -290,7 +297,7 @@ mod tests {
     #[test]
     fn exec_cmds_basic() {
         let lk = Rc::new(RefCell::new(LK::new()));
-        assert_eq!(LKEval::news(Command::Ls, lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
+        assert_eq!(LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
         let pwd1 = Rc::new(RefCell::new(Password {
             name: Rc::new("t1".to_string()),
             prefix: None,
@@ -306,7 +313,7 @@ mod tests {
             db.insert(pwd1.borrow().name.clone(), pwd1.clone());
             db
         });
-        assert_eq!(LKEval::news(Command::Ls, lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
+        assert_eq!(LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
         assert_eq!(LKEval::news(Command::Quit, lk.clone()).eval(), LKPrint::new(vec!["Bye!".to_string()], true, lk.clone()));
         let pwd2 = Rc::new(RefCell::new(Password {
             name: Rc::new("t2".to_string()),
@@ -325,11 +332,11 @@ mod tests {
             db
         });
         assert_eq!(
-            LKEval::news(Command::Ls, lk.clone()).eval(),
+            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
             LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()], false, lk.clone())
         );
         assert_eq!(LKEval::news(Command::Rm("2".to_string()), lk.clone()).eval(), LKPrint::new(vec!["removed t2".to_string()], false, lk.clone()));
-        assert_eq!(LKEval::news(Command::Ls, lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
+        assert_eq!(LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
     }
 
     #[test]
