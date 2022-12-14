@@ -166,14 +166,15 @@ impl<'a> LKEval<'a> {
             }
         };
         let name = pwd.borrow().name.clone();
-        if self.state.borrow().secrets.contains_key(&name) {
-            out.push(self.state.borrow().secrets.get(&name).unwrap().to_string());
-            return;
-        }
-        match self.read_master(pwd.clone(), true) {
-            Some(sec) => out.push(pwd.borrow().encode(sec.as_str())),
-            None => out.push(format!("error: master for {} not found", pwd.borrow().name)),
+        let pass = if self.state.borrow().secrets.contains_key(&name) {
+            self.state.borrow().secrets.get(&name).unwrap().to_string()
+        } else {
+            match self.read_master(pwd.clone(), true) {
+                Some(sec) => pwd.borrow().encode(sec.as_str()),
+                None => { out.push(format!("error: master for {} not found", pwd.borrow().name)); return; }
+            }
         };
+        out.push(pass);
     }
 
     fn cmd_ls(&self, out: &mut Vec<String>, filter: String) {
