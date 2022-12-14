@@ -154,24 +154,27 @@ impl<'a> LKEval<'a> {
 
     fn cmd_enc(&self, out: &mut Vec<String>, name: &String) {
         let root_folder = Rc::new("/".to_string());
-        if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
-            out.push(self.state.borrow().secrets.get(&root_folder).unwrap().to_string());
-            return;
-        }
-        let pwd = match self.get_password(name) {
-            Some(p) => p.clone(),
-            None => {
-                out.push(format!("error: name {} not found", name));
-                return;
-            }
-        };
-        let name = pwd.borrow().name.clone();
-        let pass = if self.state.borrow().secrets.contains_key(&name) {
-            self.state.borrow().secrets.get(&name).unwrap().to_string()
+        let pass = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
+            self.state.borrow().secrets.get(&root_folder).unwrap().to_string()
         } else {
-            match self.read_master(pwd.clone(), true) {
-                Some(sec) => pwd.borrow().encode(sec.as_str()),
-                None => { out.push(format!("error: master for {} not found", pwd.borrow().name)); return; }
+            let pwd = match self.get_password(name) {
+                Some(p) => p.clone(),
+                None => {
+                    out.push(format!("error: name {} not found", name));
+                    return;
+                }
+            };
+            let name = pwd.borrow().name.clone();
+            if self.state.borrow().secrets.contains_key(&name) {
+                self.state.borrow().secrets.get(&name).unwrap().to_string()
+            } else {
+                match self.read_master(pwd.clone(), true) {
+                    Some(sec) => pwd.borrow().encode(sec.as_str()),
+                    None => {
+                        out.push(format!("error: master for {} not found", pwd.borrow().name));
+                        return;
+                    }
+                }
             }
         };
         out.push(pass);
