@@ -1,8 +1,8 @@
 use home::home_dir;
+use regex::Regex;
 use rpassword::prompt_password;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use regex::Regex;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
@@ -179,7 +179,10 @@ impl<'a> LKEval<'a> {
     fn cmd_ls(&self, out: &mut Vec<String>, filter: String) {
         let re = match Regex::new(&filter) {
             Ok(re) => re,
-            Err(e) => { out.push(format!("error: failed to parse re: {:?}", e)); return; }
+            Err(e) => {
+                out.push(format!("error: failed to parse re: {:?}", e));
+                return;
+            }
         };
         let mut tmp: Vec<PasswordRef> = vec![];
         for (_, name) in &self.state.borrow().db {

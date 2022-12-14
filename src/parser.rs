@@ -92,18 +92,129 @@ mod tests {
 
     #[test]
     fn parse_script_test() {
-        assert_eq!(command_parser::script(r###"add t1
-add t2
-add t3"###), Ok(vec![Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t1".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t2".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t3".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None })))]));
-        assert_eq!(command_parser::script(r###"add t1
-add t2
-add t3
-"###), Ok(vec![Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t1".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t2".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t3".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Noop]));
-        assert_eq!(command_parser::script(r###"add t1
-add t2
-add t3
+        assert_eq!(
+            command_parser::script(
+                r###"add t1 C 99 2022-12-14
+add t2 C 99 2022-12-14
+add t3 C 99 2022-12-14"###
+            ),
+            Ok(vec![
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t1".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t2".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t3".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                })))
+            ])
+        );
+        assert_eq!(
+            command_parser::script(
+                r###"add t1 C 99 2022-12-14
+add t2 C 99 2022-12-14
+add t3 C 99 2022-12-14
+"###
+            ),
+            Ok(vec![
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t1".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t2".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t3".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Noop
+            ])
+        );
+        assert_eq!(
+            command_parser::script(
+                r###"add t1 C 99 2022-12-14
+add t2 C 99 2022-12-14
+add t3 C 99 2022-12-14
   # some comment
-"###), Ok(vec![Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t1".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t2".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t3".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Noop, Command::Noop]));
+"###
+            ),
+            Ok(vec![
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t1".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t2".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Add(Rc::new(RefCell::new(Password {
+                    parent: None,
+                    prefix: None,
+                    name: Rc::new("t3".to_string()),
+                    length: None,
+                    mode: Mode::NoSpaceCamel,
+                    seq: 99,
+                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    comment: None
+                }))),
+                Command::Noop,
+                Command::Noop
+            ])
+        );
     }
 
     #[test]
