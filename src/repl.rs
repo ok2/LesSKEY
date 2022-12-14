@@ -1,5 +1,6 @@
 use home::home_dir;
 use rpassword::prompt_password;
+use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use regex::Regex;
 use std::{cell::RefCell, rc::Rc};
@@ -56,6 +57,7 @@ impl LKRead {
         }
         self.cmd = match self.rl.readline(&*self.prompt) {
             Ok(str) => str,
+            Err(ReadlineError::Eof | ReadlineError::Interrupted) => "quit".to_string(),
             Err(err) => return LKEval::new(Command::Error(LKErr::ReadError(err.to_string())), self.state.clone(), self.read_password),
         };
         self.rl.add_history_entry(self.cmd.as_str());
