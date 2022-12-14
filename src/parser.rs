@@ -8,7 +8,7 @@ use std::{cell::RefCell, rc::Rc};
 
 peg::parser! {
     pub grammar command_parser() for str {
-        pub rule cmd() -> Command<'input> = c:(
+        pub rule cmd() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(
             help_cmd()
             / add_cmd()
             / quit_cmd()
@@ -18,10 +18,12 @@ peg::parser! {
             / rm_cmd()
             / enc_cmd()
             / pass_cmd()
+            / noop_cmd()
             / comment_cmd()
         ) { c }
+        pub rule script() -> Vec<Command<'input>> = c:cmd() ++ "\n" { c }
 
-        rule _() -> &'input str = s:$((" " / "\t" / "\r" / "\n")+) { s }
+        rule _() -> &'input str = s:$((" " / "\t" / "\r")+) { s }
         rule comment() -> String = _ c:$([' '..='~']+) { c.to_string() }
         rule word() -> String = n:$(['!'..='~']+) { n.to_string() }
         rule num() -> u32 = n:$(['0'..='9']+) {? n.parse().or(Err("not a number")) }
@@ -70,6 +72,7 @@ peg::parser! {
             }
         }
         rule mode() -> Mode = m:(umode() / rmode()) { m }
+        rule noop_cmd() -> Command<'input> = (" " / "\r" / "\n" / "\t")* ("#" comment())? { Command::Noop }
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
@@ -86,6 +89,22 @@ peg::parser! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_script_test() {
+        assert_eq!(command_parser::script(r###"add t1
+add t2
+add t3"###), Ok(vec![Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t1".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t2".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t3".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None })))]));
+        assert_eq!(command_parser::script(r###"add t1
+add t2
+add t3
+"###), Ok(vec![Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t1".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t2".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t3".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Noop]));
+        assert_eq!(command_parser::script(r###"add t1
+add t2
+add t3
+  # some comment
+"###), Ok(vec![Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t1".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t2".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Add(Rc::new(RefCell::new(Password { parent: None, prefix: None, name: Rc::new("t3".to_string()), length: None, mode: Mode::NoSpaceCamel, seq: 99, date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(), comment: None }))), Command::Noop, Command::Noop]));
+    }
 
     #[test]
     fn parse_password_test() {

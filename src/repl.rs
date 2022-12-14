@@ -243,6 +243,7 @@ impl<'a> LKEval<'a> {
                     }
                 }
             },
+            Command::Noop => (),
             Command::Help => {
                 out.push("HELP".to_string());
             }

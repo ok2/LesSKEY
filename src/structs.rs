@@ -21,6 +21,7 @@ pub enum Command<'a> {
     Pass(Name),
     Comment(Name, Comment),
     Error(LKErr<'a>),
+    Noop,
     Help,
     Quit,
 }
