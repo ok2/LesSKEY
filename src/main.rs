@@ -7,6 +7,7 @@ mod password;
 mod repl;
 mod skey;
 mod structs;
+mod utils;
 
 use rpassword::prompt_password;
 use rustyline::Editor;
