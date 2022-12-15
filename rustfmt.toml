@@ -1,6 +1,6 @@
-max_width = 180
-fn_call_width = 150
-attr_fn_like_width = 140
-array_width = 160
-chain_width = 160
+max_width = 120
+fn_call_width = 110
+attr_fn_like_width = 100
+array_width = 100
+chain_width = 100
 edition = "2021"

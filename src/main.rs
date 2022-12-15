@@ -33,9 +33,15 @@ pub fn main() {
         },
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => (),
         Err(err) => {
-            LKEval::new(Command::Error(LKErr::Error(format!("Failed to read init file {:?}: {}", INIT_FILE.as_path(), err).as_str())), lk.clone(), prompt_password)
-                .eval()
-                .print();
+            LKEval::new(
+                Command::Error(LKErr::Error(
+                    format!("Failed to read init file {:?}: {}", INIT_FILE.as_path(), err).as_str(),
+                )),
+                lk.clone(),
+                prompt_password,
+            )
+            .eval()
+            .print();
         }
     }
     let mut lkread = LKRead::new(Editor::<()>::new().unwrap(), String::from("❯ "), lk.clone());

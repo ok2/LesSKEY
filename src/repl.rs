@@ -56,7 +56,13 @@ impl LKRead {
         self.cmd = match self.rl.readline(&*self.prompt) {
             Ok(str) => str,
             Err(ReadlineError::Eof | ReadlineError::Interrupted) => "quit".to_string(),
-            Err(err) => return LKEval::new(Command::Error(LKErr::ReadError(err.to_string())), self.state.clone(), self.read_password),
+            Err(err) => {
+                return LKEval::new(
+                    Command::Error(LKErr::ReadError(err.to_string())),
+                    self.state.clone(),
+                    self.read_password,
+                )
+            }
         };
         self.rl.add_history_entry(self.cmd.as_str());
         match self.rl.save_history(&history_file) {
@@ -76,7 +82,11 @@ impl LKRead {
 
 impl<'a> LKEval<'a> {
     pub fn new(cmd: Command<'a>, state: Rc<RefCell<LK>>, read_password: fn(String) -> std::io::Result<String>) -> Self {
-        Self { cmd, state, read_password }
+        Self {
+            cmd,
+            state,
+            read_password,
+        }
     }
 
     pub fn news(cmd: Command<'a>, state: Rc<RefCell<LK>>) -> Self {
@@ -134,7 +144,10 @@ impl<'a> LKEval<'a> {
                     None
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
-                    self.state.borrow_mut().secrets.insert(pn.borrow().name.clone(), password.as_ref().unwrap().clone());
+                    self.state
+                        .borrow_mut()
+                        .secrets
+                        .insert(pn.borrow().name.clone(), password.as_ref().unwrap().clone());
                     password
                 } else {
                     match self.read_master(pn.clone(), read) {
@@ -240,11 +253,17 @@ impl<'a> LKEval<'a> {
             Command::Enc(name) => self.cmd_enc(&mut out, name),
             Command::Pass(name) => match self.get_password(name) {
                 Some(p) => {
-                    self.state.borrow_mut().secrets.insert(p.borrow().name.clone(), (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap());
+                    self.state.borrow_mut().secrets.insert(
+                        p.borrow().name.clone(),
+                        (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap(),
+                    );
                 }
                 None => {
                     if name == "/" {
-                        self.state.borrow_mut().secrets.insert(Rc::new("/".to_string()), (self.read_password)("Master: ".to_string()).unwrap());
+                        self.state
+                            .borrow_mut()
+                            .secrets
+                            .insert(Rc::new("/".to_string()), (self.read_password)("Master: ".to_string()).unwrap());
                     } else {
                         out.push(format!("error: password with name {} not found", name));
                     }
@@ -305,7 +324,10 @@ mod tests {
     #[test]
     fn exec_cmds_basic() {
         let lk = Rc::new(RefCell::new(LK::new()));
-        assert_eq!(LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
+        assert_eq!(
+            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKPrint::new(vec![], false, lk.clone())
+        );
         let pwd1 = Rc::new(RefCell::new(Password {
             name: Rc::new("t1".to_string()),
             prefix: None,
@@ -321,8 +343,14 @@ mod tests {
             db.insert(pwd1.borrow().name.clone(), pwd1.clone());
             db
         });
-        assert_eq!(LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
-        assert_eq!(LKEval::news(Command::Quit, lk.clone()).eval(), LKPrint::new(vec!["Bye!".to_string()], true, lk.clone()));
+        assert_eq!(
+            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone())
+        );
+        assert_eq!(
+            LKEval::news(Command::Quit, lk.clone()).eval(),
+            LKPrint::new(vec!["Bye!".to_string()], true, lk.clone())
+        );
         let pwd2 = Rc::new(RefCell::new(Password {
             name: Rc::new("t2".to_string()),
             prefix: None,
@@ -341,23 +369,63 @@ mod tests {
         });
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()], false, lk.clone())
+            LKPrint::new(
+                vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()],
+                false,
+                lk.clone()
+            )
         );
-        assert_eq!(LKEval::news(Command::Rm("2".to_string()), lk.clone()).eval(), LKPrint::new(vec!["removed t2".to_string()], false, lk.clone()));
-        assert_eq!(LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(), LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone()));
+        assert_eq!(
+            LKEval::news(Command::Rm("2".to_string()), lk.clone()).eval(),
+            LKPrint::new(vec!["removed t2".to_string()], false, lk.clone())
+        );
+        assert_eq!(
+            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], false, lk.clone())
+        );
     }
 
     #[test]
     fn read_pwd_test() {
         let lk = Rc::new(RefCell::new(LK::new()));
-        let t1 = Rc::new(RefCell::new(Password::new(None, "t1".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(), None)));
-        let t2 = Rc::new(RefCell::new(Password::new(None, "t2".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(), None)));
-        let t3 = Rc::new(RefCell::new(Password::new(None, "t3".to_string(), None, Mode::Regular, 99, NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(), None)));
+        let t1 = Rc::new(RefCell::new(Password::new(
+            None,
+            "t1".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            None,
+        )));
+        let t2 = Rc::new(RefCell::new(Password::new(
+            None,
+            "t2".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            None,
+        )));
+        let t3 = Rc::new(RefCell::new(Password::new(
+            None,
+            "t3".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            None,
+        )));
         assert_eq!(LKEval::news(Command::Add(t1.clone()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
         assert_eq!(LKEval::news(Command::Add(t2.clone()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
         assert_eq!(LKEval::news(Command::Add(t3.clone()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
-        assert_eq!(LKEval::news(Command::Mv("t3".to_string(), "t2".to_string()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
-        assert_eq!(LKEval::news(Command::Mv("t2".to_string(), "t1".to_string()), lk.clone()).eval(), LKPrint::new(vec![], false, lk.clone()));
+        assert_eq!(
+            LKEval::news(Command::Mv("t3".to_string(), "t2".to_string()), lk.clone()).eval(),
+            LKPrint::new(vec![], false, lk.clone())
+        );
+        assert_eq!(
+            LKEval::news(Command::Mv("t2".to_string(), "t1".to_string()), lk.clone()).eval(),
+            LKPrint::new(vec![], false, lk.clone())
+        );
         assert_eq!(
             LKEval::new(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "NULL" {
                 Ok("a".to_string())
