@@ -1,4 +1,3 @@
-use home::home_dir;
 use regex::Regex;
 use rpassword::prompt_password;
 use rustyline::error::ReadlineError;
@@ -8,7 +7,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::password::{fix_password_recursion, PasswordRef};
-use crate::structs::{Command, LKErr, Radix};
+use crate::structs::{Command, LKErr, Radix, HISTORY_FILE};
 
 #[derive(Debug)]
 pub struct LKRead {
@@ -45,8 +44,7 @@ impl LKRead {
     }
 
     pub fn read(&mut self) -> LKEval {
-        let history_file_path = home_dir().unwrap().join(".lesskey_history");
-        let history_file = history_file_path.as_path().to_str().unwrap();
+        let history_file = HISTORY_FILE.as_path().to_str().unwrap();
         self.rl.clear_history();
         match self.rl.load_history(&history_file) {
             Ok(_) => (),

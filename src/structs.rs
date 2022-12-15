@@ -1,5 +1,12 @@
 use crate::password::{Comment, Name, PasswordRef};
+use home::home_dir;
 use std::fmt;
+use std::path::PathBuf;
+
+lazy_static! {
+    pub static ref HISTORY_FILE: PathBuf = home_dir().unwrap().join(".lesskey_history");
+    pub static ref INIT_FILE: PathBuf = home_dir().unwrap().join(".lesskeyrc");
+}
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum LKErr<'a> {
