@@ -89,14 +89,6 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn news(cmd: Command<'a>, state: Rc<RefCell<LK>>) -> Self {
-        Self {
-            cmd,
-            state,
-            read_password: |_| Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "could not read password")),
-        }
-    }
-
     fn get_password(&self, name: &String) -> Option<PasswordRef> {
         match self.state.borrow().db.get(name) {
             Some(pwd) => Some(pwd.clone()),
@@ -320,6 +312,16 @@ mod tests {
     use crate::structs::Mode;
     use chrono::naive::NaiveDate;
     use std::collections::HashMap;
+
+    impl<'a> LKEval<'a> {
+        pub fn news(cmd: Command<'a>, state: Rc<RefCell<LK>>) -> Self {
+            Self {
+                cmd,
+                state,
+                read_password: |_| Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "could not read password")),
+            }
+        }
+    }
 
     #[test]
     fn exec_cmds_basic() {
