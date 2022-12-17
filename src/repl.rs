@@ -3,7 +3,6 @@ use rpassword::prompt_password;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
-use std::path::PathBuf;
 
 use crate::lk::LK;
 use crate::parser::command_parser;
@@ -215,7 +214,7 @@ impl<'a> LKEval<'a> {
                 Err(e) => { out.push(format!("error: failed to execute command {}: {}", cmd, e.to_string())); return; },
             }
         } else {
-            let script = PathBuf::from(source);
+            let script = shellexpand::full(source).unwrap().into_owned();
             match std::fs::read_to_string(script) {
                 Ok(script) => script,
                 Err(err) => { out.push(format!("error: failed to read file {}: {}", source, err.to_string())); return; }
