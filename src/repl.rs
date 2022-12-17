@@ -195,6 +195,10 @@ impl<'a> LKEval<'a> {
         for (_, name) in &self.state.borrow().db {
             if re.find(&name.borrow().to_string()).is_some() {
                 tmp.push(name.clone());
+            } else if re.find(&name.borrow().name).is_some() {
+                tmp.push(name.clone());
+            } else if name.borrow().comment.is_some() && re.find(&name.borrow().comment.as_ref().unwrap()).is_some() {
+                tmp.push(name.clone());
             }
         }
         tmp.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
