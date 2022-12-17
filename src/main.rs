@@ -21,7 +21,7 @@ use crate::structs::{Command, LKErr, INIT_FILE};
 pub fn main() {
     let lk = Rc::new(RefCell::new(LK::new()));
 
-    match std::fs::read_to_string(INIT_FILE.as_path().to_str().unwrap()) {
+    match std::fs::read_to_string(INIT_FILE.to_str().unwrap()) {
         Ok(script) => match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
@@ -36,7 +36,7 @@ pub fn main() {
         Err(err) => {
             LKEval::new(
                 Command::Error(LKErr::Error(
-                    format!("Failed to read init file {:?}: {}", INIT_FILE.as_path(), err).as_str(),
+                    format!("Failed to read init file {:?}: {}", INIT_FILE.to_str(), err).as_str(),
                 )),
                 lk.clone(),
                 prompt_password,

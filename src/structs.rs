@@ -1,11 +1,21 @@
 use crate::password::{Comment, Name, PasswordRef};
 use home::home_dir;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 
 lazy_static! {
-    pub static ref HISTORY_FILE: PathBuf = home_dir().unwrap().join(".lesskey_history");
-    pub static ref INIT_FILE: PathBuf = home_dir().unwrap().join(".lesskeyrc");
+    pub static ref HISTORY_FILE: Box<Path> = {
+        match std::env::var("LESSKEY_HISTORY") {
+            Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
+            _ => home_dir().unwrap().join(".lesskey_history").into_boxed_path(),
+        }
+    };
+    pub static ref INIT_FILE: Box<Path> = {
+        match std::env::var("LESSKEY_INIT") {
+            Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
+            _ => home_dir().unwrap().join(".lesskeyrc").into_boxed_path(),
+        }
+    };
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]

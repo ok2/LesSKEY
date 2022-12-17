@@ -45,7 +45,7 @@ impl LKRead {
     }
 
     pub fn read(&mut self) -> LKEval {
-        let history_file = HISTORY_FILE.as_path().to_str().unwrap();
+        let history_file = HISTORY_FILE.to_str().unwrap();
         self.rl.clear_history();
         match self.rl.load_history(&history_file) {
             Ok(_) => (),
