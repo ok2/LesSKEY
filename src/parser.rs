@@ -17,6 +17,7 @@ peg::parser! {
             / mv_cmd()
             / rm_cmd()
             / pb_cmd()
+            / source_cmd()
             / enc_cmd()
             / pass_cmd()
             / noop_cmd()
@@ -77,6 +78,7 @@ peg::parser! {
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
         rule pb_cmd() -> Command<'input> = "pb" _ e:$(([' '..='~'])+) { Command::PasteBuffer(e.to_string()) }
+        rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }

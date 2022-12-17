@@ -3,12 +3,13 @@ use rpassword::prompt_password;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
+use std::path::PathBuf;
 
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::password::{fix_password_recursion, PasswordRef};
 use crate::structs::{Command, LKErr, Radix, HISTORY_FILE};
-use crate::utils::{ call_cmd_with_input, get_copy_command_from_env };
+use crate::utils::{ call_cmd_with_input, get_copy_command_from_env, get_cmd_args_from_command };
 
 #[derive(Debug)]
 pub struct LKRead {
@@ -203,6 +204,33 @@ impl<'a> LKEval<'a> {
         };
     }
 
+    fn cmd_source(&self, out: &mut Vec<String>, source: &String) {
+        let script = if source.trim().ends_with("|") {
+            let (cmd, args) = match get_cmd_args_from_command(source.trim().trim_end_matches('|')) {
+                Ok(c) => c,
+                Err(e) => { out.push(format!("error: failed to parse command {:?}: {}", source, e.to_string())); return; },
+            };
+            match call_cmd_with_input(&cmd, &args, "") {
+                Ok(o) => o,
+                Err(e) => { out.push(format!("error: failed to execute command {}: {}", cmd, e.to_string())); return; },
+            }
+        } else {
+            let script = PathBuf::from(source);
+            match std::fs::read_to_string(script) {
+                Ok(script) => script,
+                Err(err) => { out.push(format!("error: failed to read file {}: {}", source, err.to_string())); return; }
+            }
+        };
+        match command_parser::script(&script) {
+            Ok(cmd_list) => {
+                for cmd in cmd_list {
+                    LKEval::new(cmd, self.state.clone(), prompt_password).eval().print();
+                }
+            }
+            Err(err) => { out.push(format!("error: {}", err.to_string())); return; }
+        };
+    }
+
     fn cmd_ls(&self, out: &mut Vec<String>, filter: String) {
         let re = match Regex::new(&filter) {
             Ok(re) => re,
@@ -268,6 +296,7 @@ impl<'a> LKEval<'a> {
             },
             Command::Enc(name) => self.cmd_enc(&mut out, name),
             Command::PasteBuffer(command) => self.cmd_pb(&mut out, command),
+            Command::Source(script) => self.cmd_source(&mut out, script),
             Command::Pass(name) => match self.get_password(name) {
                 Some(p) => {
                     self.state.borrow_mut().secrets.insert(

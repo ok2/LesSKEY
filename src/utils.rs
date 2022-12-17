@@ -23,6 +23,14 @@ pub fn call_cmd_with_input(cmd: &str, args: &Vec<String>, input: &str) -> io::Re
     }
 }
 
+pub fn get_cmd_args_from_command(command: &str) -> io::Result<(String, Vec<String>)> {
+    let args = match split(command) {
+        Some(c) => c,
+        None => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse the command: {:?}", command))),
+    };
+    Ok((args[0].clone(), args[1..].to_vec()))
+}
+
 pub fn get_copy_command_from_env() -> (String, Vec<String>) {
     let cmd_os_str = env::var_os("LESSKEY_PB").unwrap_or_else(|| match env::consts::OS {
         _ if env::var("TMUX").is_ok() => OsString::from("tmux load-buffer -"),
@@ -30,8 +38,7 @@ pub fn get_copy_command_from_env() -> (String, Vec<String>) {
         "linux" => OsString::from("xclip"),
         _ => OsString::from("cat"),
     });
-    let args = split(&cmd_os_str.to_string_lossy()).unwrap_or_else(|| vec!["cat".to_string()]);
-    (args[0].clone(), args[1..].to_vec())
+    get_cmd_args_from_command(&cmd_os_str.to_string_lossy()).unwrap_or_else(|_| ("cat".to_string(), vec![]))
 }
 
 #[cfg(test)]
