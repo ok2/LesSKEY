@@ -8,6 +8,7 @@ use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::password::{fix_password_recursion, PasswordRef};
 use crate::structs::{Command, LKErr, Radix, HISTORY_FILE};
+use crate::utils::{ call_cmd_with_input, get_copy_command_from_env };
 
 #[derive(Debug)]
 pub struct LKRead {
@@ -183,6 +184,25 @@ impl<'a> LKEval<'a> {
         out.push(pass);
     }
 
+    fn cmd_pb(&self, out: &mut Vec<String>, command: &String) {
+        match command_parser::cmd(command) {
+            Ok(cmd) => {
+                let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
+                let data = print.out.join("\n");
+                let (copy_command, copy_cmd_args) = get_copy_command_from_env();
+                match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
+                    Ok(s) if s.len() > 0 => {
+                        out.push(format!("Copied output with the command {}, and got following output:", copy_command));
+                        out.push(s.trim().to_string());
+                    }
+                    Ok(_) => out.push(format!("Copied output with command {}", copy_command)),
+                    Err(e) => out.push(format!("error: failed to copy: {}", e.to_string())),
+                };
+            }
+            Err(e) => out.push(format!("error: faild to parse command {}: {}", command, e.to_string())),
+        };
+    }
+
     fn cmd_ls(&self, out: &mut Vec<String>, filter: String) {
         let re = match Regex::new(&filter) {
             Ok(re) => re,
@@ -247,6 +267,7 @@ impl<'a> LKEval<'a> {
                 None => out.push("error: password not found".to_string()),
             },
             Command::Enc(name) => self.cmd_enc(&mut out, name),
+            Command::PasteBuffer(command) => self.cmd_pb(&mut out, command),
             Command::Pass(name) => match self.get_password(name) {
                 Some(p) => {
                     self.state.borrow_mut().secrets.insert(

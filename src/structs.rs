@@ -26,6 +26,7 @@ pub enum Command<'a> {
     Rm(Name),
     Enc(Name),
     Pass(Name),
+    PasteBuffer(String),
     Comment(Name, Comment),
     Error(LKErr<'a>),
     Noop,
