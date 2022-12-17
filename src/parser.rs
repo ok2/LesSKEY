@@ -20,6 +20,7 @@ peg::parser! {
             / source_cmd()
             / enc_cmd()
             / pass_cmd()
+            / unpass_cmd()
             / noop_cmd()
             / comment_cmd()
         ) { c }
@@ -84,6 +85,7 @@ peg::parser! {
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
         rule pass_cmd() -> Command<'input> = "pass" _ name:word() { Command::Pass(name) }
+        rule unpass_cmd() -> Command<'input> = "unpass" _ name:word() { Command::UnPass(name) }
         rule enc_cmd() -> Command<'input> = "enc" _ name:word() { Command::Enc(name) }
         rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
         rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }

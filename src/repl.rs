@@ -314,6 +314,10 @@ impl<'a> LKEval<'a> {
                     }
                 }
             },
+            Command::UnPass(name) => match self.state.borrow_mut().secrets.remove(name) {
+                Some(_) => out.push(format!("Removed saved password for {}", name)),
+                None => out.push(format!("error: saved password for {} not found", name)),
+            }
             Command::Noop => (),
             Command::Help => {
                 out.push("HELP".to_string());

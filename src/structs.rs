@@ -36,6 +36,7 @@ pub enum Command<'a> {
     Rm(Name),
     Enc(Name),
     Pass(Name),
+    UnPass(Name),
     PasteBuffer(String),
     Source(String),
     Comment(Name, Comment),
