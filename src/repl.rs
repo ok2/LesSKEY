@@ -3,11 +3,16 @@ use rpassword::prompt_password;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
+use std::io::{Write, BufWriter};
+use std::io::{BufRead, BufReader};
+use std::fs;
+use std::collections::HashSet;
+use sha1::{Digest, Sha1};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::password::{fix_password_recursion, PasswordRef};
-use crate::structs::{Command, LKErr, Radix, HISTORY_FILE};
+use crate::structs::{Command, LKErr, Radix, HISTORY_FILE, CORRECT_FILE};
 use crate::utils::{ call_cmd_with_input, get_copy_command_from_env, get_cmd_args_from_command };
 
 #[derive(Debug)]
@@ -156,7 +161,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn cmd_enc(&self, out: &mut Vec<String>, name: &String) {
+    fn cmd_enc(&self, out: Option<&mut Vec<String>>, name: &String) -> Option<String> {
         let root_folder = Rc::new("/".to_string());
         let pass = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
             self.state.borrow().secrets.get(&root_folder).unwrap().to_string()
@@ -164,8 +169,8 @@ impl<'a> LKEval<'a> {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
                 None => {
-                    out.push(format!("error: name {} not found", name));
-                    return;
+                    if out.is_some() { out.unwrap().push(format!("error: name {} not found", name)) };
+                    return None;
                 }
             };
             let name = pwd.borrow().name.clone();
@@ -175,13 +180,14 @@ impl<'a> LKEval<'a> {
                 match self.read_master(pwd.clone(), true) {
                     Some(sec) => pwd.borrow().encode(sec.as_str()),
                     None => {
-                        out.push(format!("error: master for {} not found", pwd.borrow().name));
-                        return;
+                        if out.is_some() { out.unwrap().push(format!("error: master for {} not found", pwd.borrow().name)) };
+                        return None;
                     }
                 }
             }
         };
-        out.push(pass);
+        if out.is_some() { out.unwrap().push(pass.clone()) };
+        Some(pass)
     }
 
     fn cmd_pb(&self, out: &mut Vec<String>, command: &String) {
@@ -259,6 +265,45 @@ impl<'a> LKEval<'a> {
         }
     }
 
+    fn cmd_correct(&self, out: &mut Vec<String>, name: &String, correct: bool) {
+        let pwd = match self.cmd_enc(None, &name) { Some(v) => v, None => return };
+        fn load_lines() -> std::io::Result<HashSet<String>> {
+            let file = fs::File::open(CORRECT_FILE.to_str().unwrap())?;
+            let reader = BufReader::new(file);
+            let mut lines = HashSet::new();
+            for line in reader.lines() {
+                lines.insert(line?.trim().to_owned());
+            }
+            Ok(lines)
+        }
+        let mut data = match load_lines() {
+            Ok(d) => d,
+            Err(_) => HashSet::new(),
+        };
+        let mut sha1 = Sha1::new();
+        sha1.update(pwd);
+        let encpwd = format!("{:x}", sha1.finalize());
+        if correct {
+            if data.contains(&encpwd) { return; }
+            data.insert(encpwd);
+        } else {
+            if !data.contains(&encpwd) { return; }
+            data.remove(&encpwd);
+        }
+        fn save_lines(data: &HashSet<String>) -> std::io::Result<()> {
+            let file = fs::File::create(CORRECT_FILE.to_str().unwrap())?;
+            let mut writer = BufWriter::new(file);
+            for entry in data {
+                writeln!(writer, "{}", entry)?;
+            }
+            Ok(())
+        }
+        match save_lines(&data) {
+            Ok(()) => out.push(format!("Hash of the password {} {}", if correct { "remembered to" } else { "removed from" },CORRECT_FILE.to_str().unwrap())),
+            Err(err) => out.push(format!("error: failed to write: {}", err.to_string())),
+        };
+    }
+
     pub fn eval(&self) -> LKPrint {
         let mut out: Vec<String> = vec![];
         let mut quit: bool = false;
@@ -293,7 +338,7 @@ impl<'a> LKEval<'a> {
                 }
                 None => out.push("error: password not found".to_string()),
             },
-            Command::Enc(name) => self.cmd_enc(&mut out, name),
+            Command::Enc(name) => { self.cmd_enc(Some(&mut out), name); },
             Command::PasteBuffer(command) => self.cmd_pb(&mut out, command),
             Command::Source(script) => self.cmd_source(&mut out, script),
             Command::Pass(name) => match self.get_password(name) {
@@ -318,6 +363,8 @@ impl<'a> LKEval<'a> {
                 Some(_) => out.push(format!("Removed saved password for {}", name)),
                 None => out.push(format!("error: saved password for {} not found", name)),
             }
+            Command::Correct(name) => self.cmd_correct(&mut out, name, true),
+            Command::Uncorrect(name) => self.cmd_correct(&mut out, name, false),
             Command::Noop => (),
             Command::Help => {
                 out.push("HELP".to_string());
