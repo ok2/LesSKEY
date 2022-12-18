@@ -235,7 +235,9 @@ impl<'a> LKEval<'a> {
         match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    LKEval::new(cmd, self.state.clone(), prompt_password).eval().print();
+                    let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
+                    for line in print.err { err.push(line) }
+                    for line in print.out { out.push(line) }
                 }
             }
             Err(e) => { err.push(format!("error: {}", e.to_string())); return; }
@@ -272,7 +274,10 @@ impl<'a> LKEval<'a> {
     }
 
     fn cmd_correct(&self, out: &mut Vec<String>, err: &mut Vec<String>, name: &String, correct: bool) {
-        let pwd = match self.cmd_enc(None, None, &name) { Some(v) => v, None => return };
+        let mut tmp_err = vec![];
+        let pwd = self.cmd_enc(None, Some(&mut tmp_err), &name);
+        for line in tmp_err { err.push(line); }
+        let pwd = match pwd { Some(v) => v, None => return };
         fn load_lines() -> std::io::Result<HashSet<String>> {
             let file = fs::File::open(CORRECT_FILE.to_str().unwrap())?;
             let reader = BufReader::new(file);
@@ -323,7 +328,7 @@ impl<'a> LKEval<'a> {
             Command::Ls(filter) => self.cmd_ls(&mut out, &mut err, filter.to_string()),
             Command::Add(name) => {
                 if self.state.borrow().db.get(&name.borrow().name).is_some() {
-                    err.push("error: password already exist".to_string());
+                    err.push(format!("error: password {} already exist", name.borrow().name));
                 } else {
                     self.state.borrow_mut().db.insert(name.borrow().name.clone(), name.clone());
                     self.state.borrow().fix_hierarchy();
@@ -343,7 +348,7 @@ impl<'a> LKEval<'a> {
                     self.state.borrow_mut().db.remove(&pwd.borrow().name);
                     out.push(format!("removed {}", pwd.borrow().name));
                 }
-                None => err.push("error: password not found".to_string()),
+                None => err.push(format!("error: password {} not found", name)),
             },
             Command::Enc(name) => { self.cmd_enc(Some(&mut out), Some(&mut err), name); },
             Command::PasteBuffer(command) => self.cmd_pb(&mut out, &mut err, command),
