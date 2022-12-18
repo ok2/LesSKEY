@@ -260,10 +260,25 @@ impl<'a> LKEval<'a> {
             }
             Ok(())
         }
-        match save_dump(&self.state.borrow().db, &script) {
-            Ok(()) => out.push(format!("Passwords dumped to {}", script)),
-            Err(e) => err.push(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
-        };
+        if script.trim().starts_with("|") {
+            let (cmd, args) = match get_cmd_args_from_command(script.trim().trim_start_matches('|')) {
+                Ok(c) => c,
+                Err(e) => { err.push(format!("error: failed to parse command {:?}: {}", script, e.to_string())); return; },
+            };
+            let data = self.state.borrow().db.values().map(|v| format!("add {}", v.borrow().to_string())).collect::<Vec<String>>().join("\n");
+            let output = match call_cmd_with_input(&cmd, &args, data.as_str()) {
+                Ok(o) => o,
+                Err(e) => { err.push(format!("error: failed to execute command {}: {}", cmd, e.to_string())); return; },
+            };
+            if output.len() > 0 {
+                out.push(format!("Passwords dumped to command {} and got following output: {}", cmd, output));
+            } else { out.push(format!("Passwords dumped to command {}", cmd)); }
+        } else {
+            match save_dump(&self.state.borrow().db, &script) {
+                Ok(()) => out.push(format!("Passwords dumped to {}", script)),
+                Err(e) => err.push(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
+            };
+        }
     }
 
     fn cmd_ls(&self, out: &mut Vec<String>, err: &mut Vec<String>, filter: String) {
