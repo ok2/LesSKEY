@@ -17,7 +17,7 @@ lazy_static! {
         }
     };
     pub static ref CORRECT_FILE: Box<Path> = {
-        match std::env::var("LESSKEY_INIT") {
+        match std::env::var("LESSKEY_CORRECT") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
             _ => home_dir().unwrap().join(".lesskey_correct").into_boxed_path(),
         }
