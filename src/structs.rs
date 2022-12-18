@@ -22,6 +22,12 @@ lazy_static! {
             _ => home_dir().unwrap().join(".lesskey_correct").into_boxed_path(),
         }
     };
+    pub static ref DUMP_FILE: Box<Path> = {
+        match std::env::var("LESSKEY_DUMP") {
+            Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
+            _ => home_dir().unwrap().join(".lesskey_dump").into_boxed_path(),
+        }
+    };
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -47,6 +53,7 @@ pub enum Command<'a> {
     Uncorrect(Name),
     PasteBuffer(String),
     Source(String),
+    Dump(Option<String>),
     Comment(Name, Comment),
     Error(LKErr<'a>),
     Noop,

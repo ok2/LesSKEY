@@ -1,7 +1,7 @@
 extern crate peg;
 
 use crate::password::Password;
-use crate::structs::{Command, LKErr, Mode};
+use crate::structs::{Command, LKErr, Mode };
 use chrono::naive::NaiveDate;
 use chrono::Local;
 use std::{cell::RefCell, rc::Rc};
@@ -18,6 +18,8 @@ peg::parser! {
             / rm_cmd()
             / pb_cmd()
             / source_cmd()
+            / dump_cmd()
+            / dump_def_cmd()
             / enc_cmd()
             / pass_cmd()
             / unpass_cmd()
@@ -81,6 +83,8 @@ peg::parser! {
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
         rule pb_cmd() -> Command<'input> = "pb" _ e:$(([' '..='~'])+) { Command::PasteBuffer(e.to_string()) }
+        rule dump_cmd() -> Command<'input> = "dump" _ s:$(([' '..='~'])+) { Command::Dump(Some(s.to_string())) }
+        rule dump_def_cmd() -> Command<'input> = "dump" { Command::Dump(None) }
         rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }

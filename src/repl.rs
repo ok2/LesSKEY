@@ -6,13 +6,13 @@ use std::{cell::RefCell, rc::Rc};
 use std::io::{Write, BufWriter};
 use std::io::{BufRead, BufReader};
 use std::fs;
-use std::collections::HashSet;
+use std::collections::{ HashSet, HashMap };
 use sha1::{Digest, Sha1};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
-use crate::password::{fix_password_recursion, PasswordRef};
-use crate::structs::{Command, LKErr, Radix, HISTORY_FILE, CORRECT_FILE};
+use crate::password::{ fix_password_recursion, PasswordRef, NameRef };
+use crate::structs::{ Command, LKErr, Radix, HISTORY_FILE, CORRECT_FILE, DUMP_FILE };
 use crate::utils::{ call_cmd_with_input, get_copy_command_from_env, get_cmd_args_from_command };
 
 #[derive(Debug)]
@@ -249,6 +249,23 @@ impl<'a> LKEval<'a> {
         };
     }
 
+    fn cmd_dump(&self, out: &mut Vec<String>, err: &mut Vec<String>, script: &Option<String>) {
+        let script = match script { Some(p) => p, None => DUMP_FILE.to_str().unwrap() };
+        let script = shellexpand::full(script).unwrap().into_owned();
+        fn save_dump(data: &HashMap<NameRef, PasswordRef>, script: &String) -> std::io::Result<()> {
+            let file = fs::File::create(script)?;
+            let mut writer = BufWriter::new(file);
+            for (_, pwd) in data {
+                writeln!(writer, "add {}", pwd.borrow().to_string())?
+            }
+            Ok(())
+        }
+        match save_dump(&self.state.borrow().db, &script) {
+            Ok(()) => out.push(format!("Passwords dumped to {}", script)),
+            Err(e) => err.push(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
+        };
+    }
+
     fn cmd_ls(&self, out: &mut Vec<String>, err: &mut Vec<String>, filter: String) {
         let re = match Regex::new(&filter) {
             Ok(re) => re,
@@ -367,6 +384,7 @@ impl<'a> LKEval<'a> {
             Command::Enc(name) => { self.cmd_enc(Some(&mut out), Some(&mut err), name); },
             Command::PasteBuffer(command) => self.cmd_pb(&mut out, &mut err, command),
             Command::Source(script) => self.cmd_source(&mut out, &mut err, script),
+            Command::Dump(script) => self.cmd_dump(&mut out, &mut err, script),
             Command::Pass(name) => match self.get_password(name) {
                 Some(p) => {
                     self.state.borrow_mut().secrets.insert(
