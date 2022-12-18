@@ -1,9 +1,9 @@
+use shlex::split;
 use std::env;
+use std::ffi::OsString;
 use std::io;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
-use shlex::split;
-use std::ffi::OsString;
 
 pub fn call_cmd_with_input(cmd: &str, args: &Vec<String>, input: &str) -> io::Result<String> {
     let mut cmd = Command::new(cmd).args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
@@ -26,7 +26,12 @@ pub fn call_cmd_with_input(cmd: &str, args: &Vec<String>, input: &str) -> io::Re
 pub fn get_cmd_args_from_command(command: &str) -> io::Result<(String, Vec<String>)> {
     let args = match split(command) {
         Some(c) => c,
-        None => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse the command: {:?}", command))),
+        None => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to parse the command: {:?}", command),
+            ))
+        }
     };
     Ok((args[0].clone(), args[1..].to_vec()))
 }
@@ -49,11 +54,22 @@ mod tests {
     fn cmd_exec_test() {
         assert_eq!(call_cmd_with_input("true", &vec![], "").unwrap(), "".to_string());
         assert_eq!(call_cmd_with_input("cat", &vec![], "ok").unwrap(), "ok".to_string());
-        assert_eq!(call_cmd_with_input("cat", &vec![], r###"line 1
+        assert_eq!(
+            call_cmd_with_input(
+                "cat",
+                &vec![],
+                r###"line 1
 line 2
 line 3
-line 4"###).unwrap(), "line 1\nline 2\nline 3\nline 4".to_string());
+line 4"###
+            )
+            .unwrap(),
+            "line 1\nline 2\nline 3\nline 4".to_string()
+        );
         assert_ne!(call_cmd_with_input("cat", &vec![], "notok").unwrap(), "ok".to_string());
-        assert_eq!(call_cmd_with_input("echo", &vec!["-n".to_string(), "test is ok".to_string()], "").unwrap(), "test is ok".to_string());
+        assert_eq!(
+            call_cmd_with_input("echo", &vec!["-n".to_string(), "test is ok".to_string()], "").unwrap(),
+            "test is ok".to_string()
+        );
     }
 }

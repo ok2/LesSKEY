@@ -1,7 +1,7 @@
 extern crate peg;
 
 use crate::password::Password;
-use crate::structs::{Command, LKErr, Mode };
+use crate::structs::{Command, LKErr, Mode};
 use chrono::naive::NaiveDate;
 use chrono::Local;
 use std::{cell::RefCell, rc::Rc};
