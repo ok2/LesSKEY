@@ -317,7 +317,8 @@ impl<'a> LKEval<'a> {
                 }
             };
             if output.len() > 0 {
-                out.push(format!("Passwords dumped to command {} and got following output: {}", cmd, output));
+                err.push(format!("Passwords dumped to command {} and got following output:", cmd));
+                out.push(output);
             } else {
                 out.push(format!("Passwords dumped to command {}", cmd));
             }
