@@ -162,10 +162,10 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn cmd_enc(&self, out: Option<&mut Vec<String>>, err: Option<&mut Vec<String>>, name: &String) -> Option<String> {
+    fn cmd_enc(&self, out: Option<&mut Vec<String>>, err: Option<&mut Vec<String>>, name: &String) -> Option<(Rc<String>, String)> {
         let root_folder = Rc::new("/".to_string());
-        let pass = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
-            self.state.borrow().secrets.get(&root_folder).unwrap().to_string()
+        let (name, pass) = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
+            (root_folder.clone(), self.state.borrow().secrets.get(&root_folder).unwrap().to_string())
         } else {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
@@ -176,19 +176,24 @@ impl<'a> LKEval<'a> {
             };
             let name = pwd.borrow().name.clone();
             if self.state.borrow().secrets.contains_key(&name) {
-                self.state.borrow().secrets.get(&name).unwrap().to_string()
+                (name.clone(), self.state.borrow().secrets.get(&name).unwrap().to_string())
             } else {
                 match self.read_master(pwd.clone(), true) {
-                    Some(sec) => pwd.borrow().encode(sec.as_str()),
+                    Some(sec) => (name.clone(), pwd.borrow().encode(sec.as_str())),
                     None => {
-                        if err.is_some() { err.unwrap().push(format!("error: master for {} not found", pwd.borrow().name)) };
+                        if err.is_some() { err.unwrap().push(format!("error: master for {} not found", name)) };
                         return None;
                     }
                 }
             }
         };
-        if out.is_some() { out.unwrap().push(pass.clone()) };
-        Some(pass)
+        if out.is_some() {
+            out.unwrap().push(pass.clone());
+            let (mut tmp_out, mut tmp_err, err) = (vec![], vec![], err.unwrap());
+            self.cmd_correct(&mut tmp_out, &mut tmp_err, name.as_ref(), true, Some(pass.clone()));
+            for line in tmp_err { err.push(line) }
+        }
+        Some((name, pass))
     }
 
     fn cmd_pb(&self, out: &mut Vec<String>, err: &mut Vec<String>, command: &String) {
@@ -273,11 +278,14 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn cmd_correct(&self, out: &mut Vec<String>, err: &mut Vec<String>, name: &String, correct: bool) {
+    fn cmd_correct(&self, out: &mut Vec<String>, err: &mut Vec<String>, name: &String, correct: bool, check: Option<String>) {
         let mut tmp_err = vec![];
-        let pwd = self.cmd_enc(None, Some(&mut tmp_err), &name);
+        let (check, pwd) = match check {
+            Some(p) => (true, Some((Rc::new(name.clone()), p))),
+            None => (false, self.cmd_enc(None, Some(&mut tmp_err), &name)),
+        };
         for line in tmp_err { err.push(line); }
-        let pwd = match pwd { Some(v) => v, None => return };
+        let (name, pwd) = match pwd { Some(v) => v, None => return };
         fn load_lines() -> std::io::Result<HashSet<String>> {
             let file = fs::File::open(CORRECT_FILE.to_str().unwrap())?;
             let reader = BufReader::new(file);
@@ -292,8 +300,14 @@ impl<'a> LKEval<'a> {
             Err(_) => HashSet::new(),
         };
         let mut sha1 = Sha1::new();
+        sha1.update(name.as_ref());
         sha1.update(pwd);
         let encpwd = format!("{:x}", sha1.finalize());
+        if check {
+            if data.contains(&encpwd) { return; }
+            err.push(format!("warning: password {} is not marked as correct", name));
+            return;
+        }
         if correct {
             if data.contains(&encpwd) { return; }
             data.insert(encpwd);
@@ -310,7 +324,7 @@ impl<'a> LKEval<'a> {
             Ok(())
         }
         match save_lines(&data) {
-            Ok(()) => out.push(format!("Hash of the password {} {}", if correct { "remembered to" } else { "removed from" },CORRECT_FILE.to_str().unwrap())),
+            Ok(()) => out.push(format!("Hash of the password {} {} {}", name, if correct { "remembered to" } else { "removed from" }, CORRECT_FILE.to_str().unwrap())),
             Err(e) => err.push(format!("error: failed to write: {}", e.to_string())),
         };
     }
@@ -375,8 +389,8 @@ impl<'a> LKEval<'a> {
                 Some(_) => out.push(format!("Removed saved password for {}", name)),
                 None => err.push(format!("error: saved password for {} not found", name)),
             }
-            Command::Correct(name) => self.cmd_correct(&mut out, &mut err, name, true),
-            Command::Uncorrect(name) => self.cmd_correct(&mut out, &mut err, name, false),
+            Command::Correct(name) => self.cmd_correct(&mut out, &mut err, name, true, None),
+            Command::Uncorrect(name) => self.cmd_correct(&mut out, &mut err, name, false, None),
             Command::Noop => (),
             Command::Help => {
                 out.push("HELP".to_string());
@@ -564,7 +578,7 @@ mod tests {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
             })
             .eval(),
-            LKPrint::new(vec!["san bud most noon jaw cash".to_string()], vec![], false, lk.clone())
+            LKPrint::new(vec!["san bud most noon jaw cash".to_string()], vec!["warning: password t3 is not marked as correct".to_string()], false, lk.clone())
         );
         assert_eq!(
             LKEval::new(Command::Enc("t2".to_string()), lk.clone(), |p| if p == "NULL" {
@@ -573,7 +587,7 @@ mod tests {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
             })
             .eval(),
-            LKPrint::new(vec!["alga barn wise tim skin mock".to_string()], vec![], false, lk.clone())
+            LKPrint::new(vec!["alga barn wise tim skin mock".to_string()], vec!["warning: password t2 is not marked as correct".to_string()], false, lk.clone())
         );
         assert_eq!(
             LKEval::new(Command::Enc("t1".to_string()), lk.clone(), |p| if p == "NULL" {
@@ -582,7 +596,7 @@ mod tests {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
             })
             .eval(),
-            LKPrint::new(vec!["lime rudy jay my kong tack".to_string()], vec![], false, lk.clone())
+            LKPrint::new(vec!["lime rudy jay my kong tack".to_string()], vec!["warning: password t1 is not marked as correct".to_string()], false, lk.clone())
         );
     }
 }
