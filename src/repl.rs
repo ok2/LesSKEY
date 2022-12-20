@@ -11,7 +11,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
-use crate::password::{fix_password_recursion, NameRef, PasswordRef};
+use crate::password::{fix_password_recursion, Name, PasswordRef};
 use crate::structs::{Command, LKErr, LKOut, Radix, CORRECT_FILE, DUMP_FILE, HISTORY_FILE};
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env};
 
@@ -115,8 +115,8 @@ impl<'a> LKEval<'a> {
             }
         }
         let parent = match &pwd.borrow().parent {
-            Some(p) => p.borrow().name.clone(),
-            None => Rc::new("/".to_string()),
+            Some(p) => p.borrow().name.to_string(),
+            None => "/".to_string(),
         };
         let secret = match self.state.borrow().secrets.get(&parent) {
             Some(p) => Some(p.clone()),
@@ -129,7 +129,7 @@ impl<'a> LKEval<'a> {
                     match (self.read_password)("Master: ".to_string()) {
                         Ok(password) => {
                             let name = Rc::new("/".to_string());
-                            self.state.borrow_mut().secrets.insert(name.clone(), password.clone());
+                            self.state.borrow_mut().secrets.insert(name.to_string(), password.clone());
                             self.cmd_correct(&out, &name.as_ref(), true, Some(password.clone()));
                             Some(password)
                         }
@@ -147,14 +147,14 @@ impl<'a> LKEval<'a> {
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
                     let name = pn.borrow().name.clone();
-                    self.state.borrow_mut().secrets.insert(name.clone(), password.as_ref().unwrap().clone());
+                    self.state.borrow_mut().secrets.insert(name.to_string(), password.as_ref().unwrap().clone());
                     self.cmd_correct(&out, name.as_ref(), true, Some(password.as_ref().unwrap().clone()));
                     password
                 } else {
                     match self.read_master(&out, pn.clone(), read) {
                         Some(master) => {
                             let password = pn.borrow().encode(master.as_str());
-                            self.state.borrow_mut().secrets.insert(pn.borrow().name.clone(), password.clone());
+                            self.state.borrow_mut().secrets.insert(pn.borrow().name.to_string(), password.clone());
                             Some(password)
                         }
                         None => None,
@@ -164,10 +164,10 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(Rc<String>, String)> {
-        let root_folder = Rc::new("/".to_string());
+    fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, String)> {
+        let root_folder = "/".to_string();
         let (name, pass) = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
-            (root_folder.clone(), self.state.borrow().secrets.get(&root_folder).unwrap().to_string())
+            (root_folder.to_string(), self.state.borrow().secrets.get(&root_folder).unwrap().to_string())
         } else {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
@@ -176,7 +176,7 @@ impl<'a> LKEval<'a> {
                     return None;
                 }
             };
-            let name = pwd.borrow().name.clone();
+            let name = pwd.borrow().name.to_string();
             if self.state.borrow().secrets.contains_key(&name) {
                 (name.clone(), self.state.borrow().secrets.get(&name).unwrap().to_string())
             } else {
@@ -191,7 +191,7 @@ impl<'a> LKEval<'a> {
         };
         if out.active() {
             out.o(pass.clone());
-            self.cmd_correct(&out, name.as_ref(), true, Some(pass.clone()));
+            self.cmd_correct(&out, &name, true, Some(pass.clone()));
         }
         Some((name, pass))
     }
@@ -201,7 +201,7 @@ impl<'a> LKEval<'a> {
             Ok(cmd) => {
                 let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
                 let data = print.out.data();
-                out.copy_err(&print.out);
+                print.out.copy_err(&out);
                 if data.len() > 0 {
                     let (copy_command, copy_cmd_args) = get_copy_command_from_env();
                     match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
@@ -267,7 +267,7 @@ impl<'a> LKEval<'a> {
             None => DUMP_FILE.to_str().unwrap(),
         };
         let script = shellexpand::full(script).unwrap().into_owned();
-        fn save_dump(data: &HashMap<NameRef, PasswordRef>, script: &String) -> std::io::Result<()> {
+        fn save_dump(data: &HashMap<Name, PasswordRef>, script: &String) -> std::io::Result<()> {
             let file = fs::File::create(script)?;
             let mut writer = BufWriter::new(file);
             for (_, pwd) in data {
@@ -343,7 +343,7 @@ impl<'a> LKEval<'a> {
 
     fn cmd_correct(&self, out: &LKOut, name: &String, correct: bool, check: Option<String>) {
         let (check, pwd) = match check {
-            Some(p) => (true, Some((Rc::new(name.clone()), p))),
+            Some(p) => (true, Some((name.to_string(), p))),
             None => (
                 false,
                 self.cmd_enc(
@@ -376,7 +376,7 @@ impl<'a> LKEval<'a> {
             Err(_) => HashSet::new(),
         };
         let mut sha1 = Sha1::new();
-        sha1.update(name.as_ref());
+        sha1.update(name.to_string());
         sha1.update(pwd);
         let encpwd = format!("{:x}", sha1.finalize());
         if check {
@@ -427,12 +427,19 @@ impl<'a> LKEval<'a> {
             }
             Command::Ls(filter) => self.cmd_ls(&out, filter.to_string()),
             Command::Add(name) => {
-                if self.state.borrow().db.get(&name.borrow().name).is_some() {
-                    out.e(format!("error: password {} already exist", name.borrow().name));
-                } else {
-                    self.state.borrow_mut().db.insert(name.borrow().name.clone(), name.clone());
-                    self.state.borrow().fix_hierarchy();
+                let state = &mut self.state.borrow_mut();
+                let mut fix = false;
+                {
+                    let db = &mut state.db;
+                    let pwname = &name.borrow().name.to_string();
+                    if db.get(pwname).is_some() {
+                        out.e(format!("error: password {} already exist", pwname));
+                    } else {
+                        db.insert(pwname.to_string(), name.clone());
+                        fix = true;
+                    }
                 }
+                if fix { state.fix_hierarchy(); }
             }
             Command::Comment(name, comment) => match self.get_password(name) {
                 Some(pwd) => {
@@ -445,7 +452,7 @@ impl<'a> LKEval<'a> {
             },
             Command::Rm(name) => match self.get_password(name) {
                 Some(pwd) => {
-                    self.state.borrow_mut().db.remove(&pwd.borrow().name);
+                    self.state.borrow_mut().db.remove(pwd.borrow().name.as_ref());
                     out.o(format!("removed {}", pwd.borrow().name));
                 }
                 None => out.e(format!("error: password {} not found", name)),
@@ -460,7 +467,7 @@ impl<'a> LKEval<'a> {
                 Some(p) => {
                     let pwd = (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap();
                     self.cmd_correct(&out, &p.borrow().name.as_ref(), true, Some(pwd.clone()));
-                    self.state.borrow_mut().secrets.insert(p.borrow().name.clone(), pwd);
+                    self.state.borrow_mut().secrets.insert(p.borrow().name.to_string(), pwd);
                 }
                 None => {
                     if name == "/" {
@@ -469,7 +476,7 @@ impl<'a> LKEval<'a> {
                         self.state
                             .borrow_mut()
                             .secrets
-                            .insert(Rc::new("/".to_string()), (self.read_password)("Master: ".to_string()).unwrap());
+                            .insert("/".to_string(), (self.read_password)("Master: ".to_string()).unwrap());
                     } else {
                         out.e(format!("error: password with name {} not found", name));
                     }
@@ -508,7 +515,7 @@ impl<'a> LKEval<'a> {
             },
         }
 
-        LKPrint::new(LKOut::from_lkout(out.out, out.err), quit, self.state.clone())
+        LKPrint::new(out, quit, self.state.clone())
     }
 }
 
@@ -563,7 +570,7 @@ mod tests {
         }));
         assert_eq!(LKEval::news(Command::Add(pwd1.clone()), lk.clone()).eval().state.borrow().db, {
             let mut db = HashMap::new();
-            db.insert(pwd1.borrow().name.clone(), pwd1.clone());
+            db.insert(pwd1.borrow().name.to_string(), pwd1.clone());
             db
         });
         assert_eq!(
@@ -590,8 +597,8 @@ mod tests {
         }));
         assert_eq!(LKEval::news(Command::Add(pwd2.clone()), lk.clone()).eval().state.borrow().db, {
             let mut db = HashMap::new();
-            db.insert(pwd1.borrow().name.clone(), pwd1.clone());
-            db.insert(pwd2.borrow().name.clone(), pwd2.clone());
+            db.insert(pwd1.borrow().name.to_string(), pwd1.clone());
+            db.insert(pwd2.borrow().name.to_string(), pwd2.clone());
             db
         });
         assert_eq!(

@@ -1,12 +1,12 @@
-use crate::password::{fix_password_recursion, NameRef, PasswordRef};
+use crate::password::{fix_password_recursion, Name, PasswordRef};
 use regex::{Captures, Regex};
 use std::collections::HashMap;
 
 #[derive(PartialEq, Debug)]
 pub struct LK {
-    pub db: HashMap<NameRef, PasswordRef>,
+    pub db: HashMap<Name, PasswordRef>,
     pub ls: HashMap<String, PasswordRef>,
-    pub secrets: HashMap<NameRef, String>,
+    pub secrets: HashMap<Name, String>,
 }
 
 impl LK {
@@ -23,28 +23,24 @@ impl LK {
             static ref RE: Regex = Regex::new(r"\s*\^([!-~]+)").unwrap();
         }
         for (_, name) in &self.db {
-            if name.borrow().comment.is_some() {
-                let mut folder: Option<String> = None;
-                let prev_comment = name.borrow().comment.as_ref().unwrap().clone();
-                let comment = RE.replace(prev_comment.as_str(), |c: &Captures| {
-                    folder = Some(c[1].to_string());
-                    ""
-                });
-                if folder.is_some() {
-                    let folder_name = folder.unwrap();
-                    for (_, entry) in &self.db {
-                        if *entry.borrow().name == *folder_name {
-                            let mut tmp = name.borrow_mut();
-                            tmp.parent = Some(entry.clone());
-                            if comment.len() == 0 {
-                                tmp.comment = None
-                            } else {
-                                tmp.comment = Some(comment.to_string())
+            let comment = name.borrow().comment.clone();
+            match comment {
+                Some(comment) => {
+                        let mut changed = false;
+                    let new = RE.replace(comment.as_str(), |c: &Captures| {
+                        let folder = c[1].to_string();
+                        match self.db.get(&folder) {
+                            Some(entry) => {
+                                name.borrow_mut().parent = Some(entry.clone());
+                                changed = true;
                             }
-                            break;
+                            None => (),
                         }
-                    }
+                        ""
+                    }).to_string();
+                    if changed && new != comment { name.borrow_mut().comment = if new.len() > 0 { Some(new) } else { None } }
                 }
+                None => (),
             }
             fix_password_recursion(name.clone());
         }

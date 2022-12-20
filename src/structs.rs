@@ -125,6 +125,7 @@ impl LKOut {
         Self { out: o, err: e }
     }
 
+    #[allow(dead_code)]
     pub fn from_vecs(out: Vec<String>, err: Vec<String>) -> Self {
         Self {
             out: Some(Rc::new(RefCell::new(out))),
