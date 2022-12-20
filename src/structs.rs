@@ -1,7 +1,9 @@
 use crate::password::{Comment, Name, PasswordRef};
 use home::home_dir;
+use std::cell::RefCell;
 use std::fmt;
 use std::path::Path;
+use std::rc::Rc;
 
 lazy_static! {
     pub static ref HISTORY_FILE: Box<Path> = {
@@ -94,6 +96,103 @@ impl std::fmt::Display for Mode {
             }
             .to_string()
         )
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct LKOut {
+    pub out: Option<Rc<RefCell<Vec<String>>>>,
+    pub err: Option<Rc<RefCell<Vec<String>>>>,
+}
+
+impl LKOut {
+    pub fn new() -> Self {
+        Self {
+            out: Some(Rc::new(RefCell::new(vec![]))),
+            err: Some(Rc::new(RefCell::new(vec![]))),
+        }
+    }
+
+    pub fn from_lkout(out: Option<Rc<RefCell<Vec<String>>>>, err: Option<Rc<RefCell<Vec<String>>>>) -> Self {
+        let o = match out {
+            Some(v) => Some(v.clone()),
+            None => None,
+        };
+        let e = match err {
+            Some(v) => Some(v.clone()),
+            None => None,
+        };
+        Self { out: o, err: e }
+    }
+
+    pub fn from_vecs(out: Vec<String>, err: Vec<String>) -> Self {
+        Self {
+            out: Some(Rc::new(RefCell::new(out))),
+            err: Some(Rc::new(RefCell::new(err))),
+        }
+    }
+
+    pub fn copy_out(&self, out: &LKOut) {
+        if !self.out.is_some() {
+            return;
+        }
+        for line in self.out.as_ref().unwrap().borrow().iter() {
+            out.o(line.to_string())
+        }
+    }
+
+    pub fn copy_err(&self, out: &LKOut) {
+        if !self.err.is_some() {
+            return;
+        }
+        for line in self.err.as_ref().unwrap().borrow().iter() {
+            out.e(line.to_string())
+        }
+    }
+
+    pub fn print_out(&self) {
+        if !self.out.is_some() {
+            return;
+        }
+        for line in self.out.as_ref().unwrap().borrow().iter() {
+            println!("{}", line);
+        }
+    }
+
+    pub fn print_err(&self) {
+        if !self.err.is_some() {
+            return;
+        }
+        for line in self.err.as_ref().unwrap().borrow().iter() {
+            eprintln!("{}", line);
+        }
+    }
+
+    pub fn copy(&self, out: &LKOut) {
+        self.copy_err(&out);
+        self.copy_out(&out);
+    }
+
+    pub fn data(&self) -> String {
+        if self.out.is_some() {
+            self.out.as_ref().unwrap().borrow().join("\n")
+        } else {
+            "".to_string()
+        }
+    }
+
+    pub fn active(&self) -> bool {
+        self.out.is_some()
+    }
+    pub fn o(&self, line: String) {
+        if self.out.is_some() {
+            self.out.as_ref().unwrap().borrow_mut().push(line);
+        }
+    }
+    pub fn e(&self, line: String) {
+        if self.err.is_some() {
+            self.err.as_ref().unwrap().borrow_mut().push(line);
+        }
     }
 }
 

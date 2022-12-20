@@ -12,7 +12,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::password::{fix_password_recursion, NameRef, PasswordRef};
-use crate::structs::{Command, LKErr, Radix, CORRECT_FILE, DUMP_FILE, HISTORY_FILE};
+use crate::structs::{Command, LKErr, LKOut, Radix, CORRECT_FILE, DUMP_FILE, HISTORY_FILE};
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env};
 
 #[derive(Debug)]
@@ -33,8 +33,7 @@ pub struct LKEval<'a> {
 
 #[derive(Debug, PartialEq)]
 pub struct LKPrint {
-    out: Vec<String>,
-    err: Vec<String>,
+    out: LKOut,
     quit: bool,
     state: Rc<RefCell<LK>>,
 }
@@ -106,10 +105,12 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn read_master(&self, pwd: PasswordRef, read: bool) -> Option<String> {
+    fn read_master(&self, out: &LKOut, pwd: PasswordRef, read: bool) -> Option<String> {
         if read {
-            match self.read_master(pwd.clone(), false) {
-                Some(p) => return Some(p),
+            match self.read_master(&out, pwd.clone(), false) {
+                Some(p) => {
+                    return Some(p);
+                }
                 None => (),
             }
         }
@@ -127,7 +128,9 @@ impl<'a> LKEval<'a> {
                 if read {
                     match (self.read_password)("Master: ".to_string()) {
                         Ok(password) => {
-                            self.state.borrow_mut().secrets.insert(Rc::new("/".to_string()), password.clone());
+                            let name = Rc::new("/".to_string());
+                            self.state.borrow_mut().secrets.insert(name.clone(), password.clone());
+                            self.cmd_correct(&out, &name.as_ref(), true, Some(password.clone()));
                             Some(password)
                         }
                         Err(_) => None,
@@ -143,13 +146,12 @@ impl<'a> LKEval<'a> {
                     None
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
-                    self.state
-                        .borrow_mut()
-                        .secrets
-                        .insert(pn.borrow().name.clone(), password.as_ref().unwrap().clone());
+                    let name = pn.borrow().name.clone();
+                    self.state.borrow_mut().secrets.insert(name.clone(), password.as_ref().unwrap().clone());
+                    self.cmd_correct(&out, name.as_ref(), true, Some(password.as_ref().unwrap().clone()));
                     password
                 } else {
-                    match self.read_master(pn.clone(), read) {
+                    match self.read_master(&out, pn.clone(), read) {
                         Some(master) => {
                             let password = pn.borrow().encode(master.as_str());
                             self.state.borrow_mut().secrets.insert(pn.borrow().name.clone(), password.clone());
@@ -162,12 +164,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    fn cmd_enc(
-        &self,
-        out: Option<&mut Vec<String>>,
-        err: Option<&mut Vec<String>>,
-        name: &String,
-    ) -> Option<(Rc<String>, String)> {
+    fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(Rc<String>, String)> {
         let root_folder = Rc::new("/".to_string());
         let (name, pass) = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
             (root_folder.clone(), self.state.borrow().secrets.get(&root_folder).unwrap().to_string())
@@ -175,9 +172,7 @@ impl<'a> LKEval<'a> {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
                 None => {
-                    if err.is_some() {
-                        err.unwrap().push(format!("error: name {} not found", name))
-                    };
+                    out.e(format!("error: name {} not found", name));
                     return None;
                 }
             };
@@ -185,68 +180,60 @@ impl<'a> LKEval<'a> {
             if self.state.borrow().secrets.contains_key(&name) {
                 (name.clone(), self.state.borrow().secrets.get(&name).unwrap().to_string())
             } else {
-                match self.read_master(pwd.clone(), true) {
+                match self.read_master(&out, pwd.clone(), true) {
                     Some(sec) => (name.clone(), pwd.borrow().encode(sec.as_str())),
                     None => {
-                        if err.is_some() {
-                            err.unwrap().push(format!("error: master for {} not found", name))
-                        };
+                        out.e(format!("error: master for {} not found", name));
                         return None;
                     }
                 }
             }
         };
-        if out.is_some() {
-            out.unwrap().push(pass.clone());
-            let (mut tmp_out, mut tmp_err, err) = (vec![], vec![], err.unwrap());
-            self.cmd_correct(&mut tmp_out, &mut tmp_err, name.as_ref(), true, Some(pass.clone()));
-            for line in tmp_err {
-                err.push(line)
-            }
+        if out.active() {
+            out.o(pass.clone());
+            self.cmd_correct(&out, name.as_ref(), true, Some(pass.clone()));
         }
         Some((name, pass))
     }
 
-    fn cmd_pb(&self, out: &mut Vec<String>, err: &mut Vec<String>, command: &String) {
+    fn cmd_pb(&self, out: &LKOut, command: &String) {
         match command_parser::cmd(command) {
             Ok(cmd) => {
                 let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
-                let data = print.out.join("\n");
-                for line in print.err {
-                    err.push(line)
-                }
+                let data = print.out.data();
+                out.copy_err(&print.out);
                 if data.len() > 0 {
                     let (copy_command, copy_cmd_args) = get_copy_command_from_env();
                     match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
                         Ok(s) if s.len() > 0 => {
-                            out.push(format!(
+                            out.o(format!(
                                 "Copied output with the command {}, and got following output:",
                                 copy_command
                             ));
-                            out.push(s.trim().to_string());
+                            out.o(s.trim().to_string());
                         }
-                        Ok(_) => out.push(format!("Copied output with command {}", copy_command)),
-                        Err(e) => err.push(format!("error: failed to copy: {}", e.to_string())),
+                        Ok(_) => out.o(format!("Copied output with command {}", copy_command)),
+                        Err(e) => out.e(format!("error: failed to copy: {}", e.to_string())),
                     };
                 }
             }
-            Err(e) => err.push(format!("error: faild to parse command {}: {}", command, e.to_string())),
+            Err(e) => out.e(format!("error: faild to parse command {}: {}", command, e.to_string())),
         };
     }
 
-    fn cmd_source(&self, out: &mut Vec<String>, err: &mut Vec<String>, source: &String) {
+    fn cmd_source(&self, out: &LKOut, source: &String) {
         let script = if source.trim().ends_with("|") {
             let (cmd, args) = match get_cmd_args_from_command(source.trim().trim_end_matches('|')) {
                 Ok(c) => c,
                 Err(e) => {
-                    err.push(format!("error: failed to parse command {:?}: {}", source, e.to_string()));
+                    out.e(format!("error: failed to parse command {:?}: {}", source, e.to_string()));
                     return;
                 }
             };
             match call_cmd_with_input(&cmd, &args, "") {
                 Ok(o) => o,
                 Err(e) => {
-                    err.push(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
+                    out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
                     return;
                 }
             }
@@ -255,7 +242,7 @@ impl<'a> LKEval<'a> {
             match std::fs::read_to_string(script) {
                 Ok(script) => script,
                 Err(e) => {
-                    err.push(format!("error: failed to read file {}: {}", source, e.to_string()));
+                    out.e(format!("error: failed to read file {}: {}", source, e.to_string()));
                     return;
                 }
             }
@@ -264,22 +251,17 @@ impl<'a> LKEval<'a> {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
                     let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
-                    for line in print.err {
-                        err.push(line)
-                    }
-                    for line in print.out {
-                        out.push(line)
-                    }
+                    print.out.copy(&out);
                 }
             }
             Err(e) => {
-                err.push(format!("error: {}", e.to_string()));
+                out.e(format!("error: {}", e.to_string()));
                 return;
             }
         };
     }
 
-    fn cmd_dump(&self, out: &mut Vec<String>, err: &mut Vec<String>, script: &Option<String>) {
+    fn cmd_dump(&self, out: &LKOut, script: &Option<String>) {
         let script = match script {
             Some(p) => p,
             None => DUMP_FILE.to_str().unwrap(),
@@ -297,7 +279,7 @@ impl<'a> LKEval<'a> {
             let (cmd, args) = match get_cmd_args_from_command(script.trim().trim_start_matches('|')) {
                 Ok(c) => c,
                 Err(e) => {
-                    err.push(format!("error: failed to parse command {:?}: {}", script, e.to_string()));
+                    out.e(format!("error: failed to parse command {:?}: {}", script, e.to_string()));
                     return;
                 }
             };
@@ -312,29 +294,29 @@ impl<'a> LKEval<'a> {
             let output = match call_cmd_with_input(&cmd, &args, data.as_str()) {
                 Ok(o) => o,
                 Err(e) => {
-                    err.push(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
+                    out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
                     return;
                 }
             };
             if output.len() > 0 {
-                err.push(format!("Passwords dumped to command {} and got following output:", cmd));
-                out.push(output);
+                out.e(format!("Passwords dumped to command {} and got following output:", cmd));
+                out.o(output);
             } else {
-                out.push(format!("Passwords dumped to command {}", cmd));
+                out.o(format!("Passwords dumped to command {}", cmd));
             }
         } else {
             match save_dump(&self.state.borrow().db, &script) {
-                Ok(()) => out.push(format!("Passwords dumped to {}", script)),
-                Err(e) => err.push(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
+                Ok(()) => out.o(format!("Passwords dumped to {}", script)),
+                Err(e) => out.e(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
             };
         }
     }
 
-    fn cmd_ls(&self, out: &mut Vec<String>, err: &mut Vec<String>, filter: String) {
+    fn cmd_ls(&self, out: &LKOut, filter: String) {
         let re = match Regex::new(&filter) {
             Ok(re) => re,
             Err(e) => {
-                err.push(format!("error: failed to parse re: {:?}", e));
+                out.e(format!("error: failed to parse re: {:?}", e));
                 return;
             }
         };
@@ -355,26 +337,27 @@ impl<'a> LKEval<'a> {
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
             self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
-            out.push(format!("{:>3} {}", key, pwd.borrow().to_string()));
+            out.o(format!("{:>3} {}", key, pwd.borrow().to_string()));
         }
     }
 
-    fn cmd_correct(
-        &self,
-        out: &mut Vec<String>,
-        err: &mut Vec<String>,
-        name: &String,
-        correct: bool,
-        check: Option<String>,
-    ) {
-        let mut tmp_err = vec![];
+    fn cmd_correct(&self, out: &LKOut, name: &String, correct: bool, check: Option<String>) {
         let (check, pwd) = match check {
             Some(p) => (true, Some((Rc::new(name.clone()), p))),
-            None => (false, self.cmd_enc(None, Some(&mut tmp_err), &name)),
+            None => (
+                false,
+                self.cmd_enc(
+                    &LKOut::from_lkout(
+                        None,
+                        match &out.err {
+                            Some(e) => Some(e.clone()),
+                            None => None,
+                        },
+                    ),
+                    &name,
+                ),
+            ),
         };
-        for line in tmp_err {
-            err.push(line);
-        }
         let (name, pwd) = match pwd {
             Some(v) => v,
             None => return,
@@ -400,7 +383,7 @@ impl<'a> LKEval<'a> {
             if data.contains(&encpwd) {
                 return;
             }
-            err.push(format!("warning: password {} is not marked as correct", name));
+            out.e(format!("warning: password {} is not marked as correct", name));
             return;
         }
         if correct {
@@ -423,30 +406,29 @@ impl<'a> LKEval<'a> {
             Ok(())
         }
         match save_lines(&data) {
-            Ok(()) => out.push(format!(
+            Ok(()) => out.o(format!(
                 "Hash of the password {} {} {}",
                 name,
                 if correct { "remembered to" } else { "removed from" },
                 CORRECT_FILE.to_str().unwrap()
             )),
-            Err(e) => err.push(format!("error: failed to write: {}", e.to_string())),
+            Err(e) => out.e(format!("error: failed to write: {}", e.to_string())),
         };
     }
 
     pub fn eval(&self) -> LKPrint {
-        let mut out: Vec<String> = vec![];
-        let mut err: Vec<String> = vec![];
+        let out = LKOut::new();
         let mut quit: bool = false;
 
         match &self.cmd {
             Command::Quit => {
-                err.push("Bye!".to_string());
+                out.e("Bye!".to_string());
                 quit = true;
             }
-            Command::Ls(filter) => self.cmd_ls(&mut out, &mut err, filter.to_string()),
+            Command::Ls(filter) => self.cmd_ls(&out, filter.to_string()),
             Command::Add(name) => {
                 if self.state.borrow().db.get(&name.borrow().name).is_some() {
-                    err.push(format!("error: password {} already exist", name.borrow().name));
+                    out.e(format!("error: password {} already exist", name.borrow().name));
                 } else {
                     self.state.borrow_mut().db.insert(name.borrow().name.clone(), name.clone());
                     self.state.borrow().fix_hierarchy();
@@ -459,48 +441,49 @@ impl<'a> LKEval<'a> {
                         None => None,
                     }
                 }
-                None => err.push("error: password not found".to_string()),
+                None => out.e("error: password not found".to_string()),
             },
             Command::Rm(name) => match self.get_password(name) {
                 Some(pwd) => {
                     self.state.borrow_mut().db.remove(&pwd.borrow().name);
-                    out.push(format!("removed {}", pwd.borrow().name));
+                    out.o(format!("removed {}", pwd.borrow().name));
                 }
-                None => err.push(format!("error: password {} not found", name)),
+                None => out.e(format!("error: password {} not found", name)),
             },
             Command::Enc(name) => {
-                self.cmd_enc(Some(&mut out), Some(&mut err), name);
+                self.cmd_enc(&out, name);
             }
-            Command::PasteBuffer(command) => self.cmd_pb(&mut out, &mut err, command),
-            Command::Source(script) => self.cmd_source(&mut out, &mut err, script),
-            Command::Dump(script) => self.cmd_dump(&mut out, &mut err, script),
+            Command::PasteBuffer(command) => self.cmd_pb(&out, command),
+            Command::Source(script) => self.cmd_source(&out, script),
+            Command::Dump(script) => self.cmd_dump(&out, script),
             Command::Pass(name) => match self.get_password(name) {
                 Some(p) => {
-                    self.state.borrow_mut().secrets.insert(
-                        p.borrow().name.clone(),
-                        (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap(),
-                    );
+                    let pwd = (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap();
+                    self.cmd_correct(&out, &p.borrow().name.as_ref(), true, Some(pwd.clone()));
+                    self.state.borrow_mut().secrets.insert(p.borrow().name.clone(), pwd);
                 }
                 None => {
                     if name == "/" {
+                        let pwd = (self.read_password)("Master: ".to_string()).unwrap();
+                        self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
                         self.state
                             .borrow_mut()
                             .secrets
                             .insert(Rc::new("/".to_string()), (self.read_password)("Master: ".to_string()).unwrap());
                     } else {
-                        err.push(format!("error: password with name {} not found", name));
+                        out.e(format!("error: password with name {} not found", name));
                     }
                 }
             },
             Command::UnPass(name) => match self.state.borrow_mut().secrets.remove(name) {
-                Some(_) => out.push(format!("Removed saved password for {}", name)),
-                None => err.push(format!("error: saved password for {} not found", name)),
+                Some(_) => out.o(format!("Removed saved password for {}", name)),
+                None => out.e(format!("error: saved password for {} not found", name)),
             },
-            Command::Correct(name) => self.cmd_correct(&mut out, &mut err, name, true, None),
-            Command::Uncorrect(name) => self.cmd_correct(&mut out, &mut err, name, false, None),
+            Command::Correct(name) => self.cmd_correct(&out, name, true, None),
+            Command::Uncorrect(name) => self.cmd_correct(&out, name, false, None),
             Command::Noop => (),
             Command::Help => {
-                out.push("HELP".to_string());
+                out.o("HELP".to_string());
             }
             Command::Mv(name, folder) => match self.get_password(name) {
                 Some(pwd) => {
@@ -512,35 +495,31 @@ impl<'a> LKEval<'a> {
                                 pwd.borrow_mut().parent = Some(fld.clone());
                                 fix_password_recursion(pwd.clone());
                             }
-                            None => err.push(format!("error: folder {} not found", folder)),
+                            None => out.e(format!("error: folder {} not found", folder)),
                         }
                     }
                 }
-                None => err.push(format!("error: password with name {} not found", name)),
+                None => out.e(format!("error: password with name {} not found", name)),
             },
             Command::Error(error) => match error {
-                LKErr::ParseError(e) => err.push(e.to_string()),
-                LKErr::ReadError(e) => err.push(e.to_string()),
-                LKErr::Error(e) => err.push(format!("error: {}", e.to_string())),
+                LKErr::ParseError(e) => out.e(e.to_string()),
+                LKErr::ReadError(e) => out.e(e.to_string()),
+                LKErr::Error(e) => out.e(format!("error: {}", e.to_string())),
             },
         }
 
-        LKPrint::new(out, err, quit, self.state.clone())
+        LKPrint::new(LKOut::from_lkout(out.out, out.err), quit, self.state.clone())
     }
 }
 
 impl LKPrint {
-    pub fn new(out: Vec<String>, err: Vec<String>, quit: bool, state: Rc<RefCell<LK>>) -> Self {
-        Self { out, err, quit, state }
+    pub fn new(out: LKOut, quit: bool, state: Rc<RefCell<LK>>) -> Self {
+        Self { out, quit, state }
     }
 
     pub fn print(&mut self) -> bool {
-        for line in &self.err {
-            eprintln!("{}", line);
-        }
-        for line in &self.out {
-            println!("{}", line);
-        }
+        self.out.print_err();
+        self.out.print_out();
         return !self.quit;
     }
 }
@@ -570,7 +549,7 @@ mod tests {
         let lk = Rc::new(RefCell::new(LK::new()));
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec![], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         let pwd1 = Rc::new(RefCell::new(Password {
             name: Rc::new("t1".to_string()),
@@ -589,11 +568,15 @@ mod tests {
         });
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], vec![], false, lk.clone())
+            LKPrint::new(
+                LKOut::from_vecs(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], vec![]),
+                false,
+                lk.clone()
+            )
         );
         assert_eq!(
             LKEval::news(Command::Quit, lk.clone()).eval(),
-            LKPrint::new(vec![], vec!["Bye!".to_string()], true, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec!["Bye!".to_string()]), true, lk.clone())
         );
         let pwd2 = Rc::new(RefCell::new(Password {
             name: Rc::new("t2".to_string()),
@@ -614,19 +597,25 @@ mod tests {
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
             LKPrint::new(
-                vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()],
-                vec![],
+                LKOut::from_vecs(
+                    vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()],
+                    vec![]
+                ),
                 false,
                 lk.clone()
             )
         );
         assert_eq!(
             LKEval::news(Command::Rm("2".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec!["removed t2".to_string()], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec!["removed t2".to_string()], vec![]), false, lk.clone())
         );
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], vec![], false, lk.clone())
+            LKPrint::new(
+                LKOut::from_vecs(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], vec![]),
+                false,
+                lk.clone()
+            )
         );
     }
 
@@ -662,23 +651,23 @@ mod tests {
         )));
         assert_eq!(
             LKEval::news(Command::Add(t1.clone()), lk.clone()).eval(),
-            LKPrint::new(vec![], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         assert_eq!(
             LKEval::news(Command::Add(t2.clone()), lk.clone()).eval(),
-            LKPrint::new(vec![], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         assert_eq!(
             LKEval::news(Command::Add(t3.clone()), lk.clone()).eval(),
-            LKPrint::new(vec![], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         assert_eq!(
             LKEval::news(Command::Mv("t3".to_string(), "t2".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec![], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         assert_eq!(
             LKEval::news(Command::Mv("t2".to_string(), "t1".to_string()), lk.clone()).eval(),
-            LKPrint::new(vec![], vec![], false, lk.clone())
+            LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         assert_eq!(
             LKEval::new(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "NULL" {
@@ -687,7 +676,11 @@ mod tests {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
             })
             .eval(),
-            LKPrint::new(vec![], vec!["error: master for t3 not found".to_string()], false, lk.clone())
+            LKPrint::new(
+                LKOut::from_vecs(vec![], vec!["error: master for t3 not found".to_string()]),
+                false,
+                lk.clone()
+            )
         );
         assert_eq!(
             LKEval::new(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "Master: " {
@@ -697,8 +690,13 @@ mod tests {
             })
             .eval(),
             LKPrint::new(
-                vec!["san bud most noon jaw cash".to_string()],
-                vec!["warning: password t3 is not marked as correct".to_string()],
+                LKOut::from_vecs(
+                    vec!["san bud most noon jaw cash".to_string()],
+                    vec![
+                        "warning: password / is not marked as correct".to_string(),
+                        "warning: password t3 is not marked as correct".to_string()
+                    ]
+                ),
                 false,
                 lk.clone()
             )
@@ -711,8 +709,10 @@ mod tests {
             })
             .eval(),
             LKPrint::new(
-                vec!["alga barn wise tim skin mock".to_string()],
-                vec!["warning: password t2 is not marked as correct".to_string()],
+                LKOut::from_vecs(
+                    vec!["alga barn wise tim skin mock".to_string()],
+                    vec!["warning: password t2 is not marked as correct".to_string()]
+                ),
                 false,
                 lk.clone()
             )
@@ -725,8 +725,10 @@ mod tests {
             })
             .eval(),
             LKPrint::new(
-                vec!["lime rudy jay my kong tack".to_string()],
-                vec!["warning: password t1 is not marked as correct".to_string()],
+                LKOut::from_vecs(
+                    vec!["lime rudy jay my kong tack".to_string()],
+                    vec!["warning: password t1 is not marked as correct".to_string()]
+                ),
                 false,
                 lk.clone()
             )
