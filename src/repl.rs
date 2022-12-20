@@ -128,9 +128,9 @@ impl<'a> LKEval<'a> {
                 if read {
                     match (self.read_password)("Master: ".to_string()) {
                         Ok(password) => {
-                            let name = Rc::new("/".to_string());
+                            let name = "/".to_string();
                             self.state.borrow_mut().secrets.insert(name.to_string(), password.clone());
-                            self.cmd_correct(&out, &name.as_ref(), true, Some(password.clone()));
+                            self.cmd_correct(&out, &name, true, Some(password.clone()));
                             Some(password)
                         }
                         Err(_) => None,
@@ -146,9 +146,9 @@ impl<'a> LKEval<'a> {
                     None
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
-                    let name = pn.borrow().name.clone();
+                    let name = pn.borrow().name.to_string();
                     self.state.borrow_mut().secrets.insert(name.to_string(), password.as_ref().unwrap().clone());
-                    self.cmd_correct(&out, name.as_ref(), true, Some(password.as_ref().unwrap().clone()));
+                    self.cmd_correct(&out, &name, true, Some(password.as_ref().unwrap().clone()));
                     password
                 } else {
                     match self.read_master(&out, pn.clone(), read) {
