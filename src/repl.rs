@@ -5,7 +5,6 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
-use crate::password::fix_password_recursion;
 use crate::structs::{Command, LKErr, LKOut, HISTORY_FILE};
 
 #[derive(Debug)]
@@ -98,32 +97,8 @@ impl<'a> LKEval<'a> {
                 quit = true;
             }
             Command::Ls(filter) => self.cmd_ls(&out, filter.to_string()),
-            Command::Add(name) => {
-                let state = &mut self.state.borrow_mut();
-                let mut fix = false;
-                {
-                    let db = &mut state.db;
-                    let pwname = &name.borrow().name.to_string();
-                    if db.get(pwname).is_some() {
-                        out.e(format!("error: password {} already exist", pwname));
-                    } else {
-                        db.insert(pwname.to_string(), name.clone());
-                        fix = true;
-                    }
-                }
-                if fix {
-                    state.fix_hierarchy();
-                }
-            }
-            Command::Comment(name, comment) => match self.get_password(name) {
-                Some(pwd) => {
-                    pwd.borrow_mut().comment = match comment {
-                        Some(c) => Some(c.to_string()),
-                        None => None,
-                    }
-                }
-                None => out.e("error: password not found".to_string()),
-            },
+            Command::Add(name) => self.cmd_add(&out, &name),
+            Command::Comment(name, comment) => self.cmd_comment(&out, &name, &comment),
             Command::Rm(name) => match self.get_password(name) {
                 Some(pwd) => {
                     self.state.borrow_mut().db.remove(pwd.borrow().name.as_ref());
@@ -137,25 +112,7 @@ impl<'a> LKEval<'a> {
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
             Command::Source(script) => self.cmd_source(&out, script),
             Command::Dump(script) => self.cmd_dump(&out, script),
-            Command::Pass(name) => match self.get_password(name) {
-                Some(p) => {
-                    let pwd = (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap();
-                    self.cmd_correct(&out, &p.borrow().name.as_ref(), true, Some(pwd.clone()));
-                    self.state.borrow_mut().secrets.insert(p.borrow().name.to_string(), pwd);
-                }
-                None => {
-                    if name == "/" {
-                        let pwd = (self.read_password)("Master: ".to_string()).unwrap();
-                        self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
-                        self.state
-                            .borrow_mut()
-                            .secrets
-                            .insert("/".to_string(), (self.read_password)("Master: ".to_string()).unwrap());
-                    } else {
-                        out.e(format!("error: password with name {} not found", name));
-                    }
-                }
-            },
+            Command::Pass(name) => self.cmd_pass(&out, &name),
             Command::UnPass(name) => match self.state.borrow_mut().secrets.remove(name) {
                 Some(_) => out.o(format!("Removed saved password for {}", name)),
                 None => out.e(format!("error: saved password for {} not found", name)),
@@ -166,22 +123,7 @@ impl<'a> LKEval<'a> {
             Command::Help => {
                 out.o("HELP".to_string());
             }
-            Command::Mv(name, folder) => match self.get_password(name) {
-                Some(pwd) => {
-                    if folder == "/" {
-                        pwd.borrow_mut().parent = None
-                    } else {
-                        match self.get_password(folder) {
-                            Some(fld) => {
-                                pwd.borrow_mut().parent = Some(fld.clone());
-                                fix_password_recursion(pwd.clone());
-                            }
-                            None => out.e(format!("error: folder {} not found", folder)),
-                        }
-                    }
-                }
-                None => out.e(format!("error: password with name {} not found", name)),
-            },
+            Command::Mv(name, folder) => self.cmd_mv(&out, &name, &folder),
             Command::Error(error) => match error {
                 LKErr::ParseError(e) => out.e(e.to_string()),
                 LKErr::ReadError(e) => out.e(e.to_string()),

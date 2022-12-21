@@ -1,8 +1,11 @@
-#[macro_use] extern crate lazy_static;
-#[allow(unused_imports)] #[macro_use(defer)] extern crate scopeguard;
+#[macro_use]
+extern crate lazy_static;
+#[allow(unused_imports)]
+#[macro_use(defer)]
+extern crate scopeguard;
 
-mod lk;
 mod commands;
+mod lk;
 mod parser;
 mod password;
 mod repl;

@@ -6,9 +6,10 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::io::{BufWriter, Write};
 
-use crate::repl::LKEval;
 use crate::parser::command_parser;
+use crate::password::fix_password_recursion;
 use crate::password::{Name, PasswordRef};
+use crate::repl::LKEval;
 use crate::structs::{LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env};
 
@@ -83,7 +84,78 @@ impl<'a> LKEval<'a> {
             }
         }
     }
-    
+
+    pub fn cmd_add(&self, out: &LKOut, name: &PasswordRef) {
+        let state = &mut self.state.borrow_mut();
+        let mut fix = false;
+        {
+            let db = &mut state.db;
+            let pwname = &name.borrow().name.to_string();
+            if db.get(pwname).is_some() {
+                out.e(format!("error: password {} already exist", pwname));
+            } else {
+                db.insert(pwname.to_string(), name.clone());
+                fix = true;
+            }
+        }
+        if fix {
+            state.fix_hierarchy();
+        }
+    }
+
+    pub fn cmd_mv(&self, out: &LKOut, name: &String, folder: &String) {
+        match self.get_password(name) {
+            Some(pwd) => {
+                if folder == "/" {
+                    pwd.borrow_mut().parent = None
+                } else {
+                    match self.get_password(folder) {
+                        Some(fld) => {
+                            pwd.borrow_mut().parent = Some(fld.clone());
+                            fix_password_recursion(pwd.clone());
+                        }
+                        None => out.e(format!("error: folder {} not found", folder)),
+                    }
+                }
+            }
+            None => out.e(format!("error: password with name {} not found", name)),
+        }
+    }
+
+    pub fn cmd_pass(&self, out: &LKOut, name: &String) {
+        match self.get_password(name) {
+            Some(p) => {
+                let pwd = (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap();
+                self.cmd_correct(&out, &p.borrow().name.as_ref(), true, Some(pwd.clone()));
+                self.state.borrow_mut().secrets.insert(p.borrow().name.to_string(), pwd);
+            }
+            None => {
+                if name == "/" {
+                    let pwd = (self.read_password)("Master: ".to_string()).unwrap();
+                    self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
+                    self.state
+                        .borrow_mut()
+                        .secrets
+                        .insert("/".to_string(), (self.read_password)("Master: ".to_string()).unwrap());
+                } else {
+                    out.e(format!("error: password with name {} not found", name));
+                }
+            }
+        }
+    }
+
+    pub fn cmd_comment(&self, out: &LKOut, name: &String, comment: &Option<String>) {
+        match self.get_password(name) {
+            Some(pwd) => {
+                pwd.borrow_mut().comment = match comment {
+                    Some(c) => Some(c.to_string()),
+                    None => None,
+                }
+            }
+            None => out.e("error: password not found".to_string()),
+        }
+    }
+
     pub fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, String)> {
         let root_folder = "/".to_string();
         let (name, pass) = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
