@@ -294,6 +294,7 @@ mod tests {
     use crate::password::Password;
     use chrono::naive::NaiveDate;
     use std::io::{BufWriter, Write};
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn test_env() {
@@ -312,6 +313,16 @@ mod tests {
             writeln!(writer, "add t3 r 99 2022-10-10 ^t2 aoeu").expect("write");
         }
 
+        fn create_pb() {
+            let file = std::fs::File::create("test_pb").unwrap();
+            let mut writer = BufWriter::new(file);
+            let metadata = std::fs::metadata("test_pb").expect("unable to get file metadata");
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o755); // set executable flag
+            std::fs::set_permissions("test_pb", permissions).expect("unable to set file permissions");
+            writeln!(writer, "#!/bin/sh\ncat >test_pb_out").expect("write");
+        }
+
         #[allow(unused_must_use)]
         {
             std::fs::remove_file("test_history");
@@ -319,9 +330,12 @@ mod tests {
             std::fs::remove_file("test_dump");
             std::fs::remove_file("test_correct");
             std::fs::remove_file("test_pb");
+            std::fs::remove_file("test_pb_out");
         }
 
         create_init();
+        create_pb();
+
         let lkread = init();
         assert_eq!(lkread.prompt, "test> ");
         assert_eq!(lkread.state.borrow().db.contains_key("t1"), true);
@@ -367,7 +381,7 @@ mod tests {
             "add t1 R 99 2022-10-10\nadd t2 R 99 2022-10-10 test ^t1\nadd t3 R 99 2022-10-10 aoeu ^t2\n".to_string()
         );
 
-        let pr = LKEval::new(command_parser::cmd("enc t2").unwrap(), lkread.state.clone(), |v| {
+        let pr = LKEval::new(command_parser::cmd("enc t3").unwrap(), lkread.state.clone(), |v| {
             if v == "/" {
                 Ok("a".to_string())
             } else {
@@ -378,13 +392,36 @@ mod tests {
         assert_eq!(
             pr.out,
             LKOut::from_vecs(
-                vec!["mid date os gaur gear let".to_string()],
+                vec!["fief gild sits can un very".to_string()],
                 vec![
                     "warning: password / is not marked as correct".to_string(),
                     "warning: password t1 is not marked as correct".to_string(),
                     "warning: password t2 is not marked as correct".to_string(),
+                    "warning: password t3 is not marked as correct".to_string(),
                 ]
             )
         );
+        lkread.state.borrow_mut().secrets.clear();
+        let pr = LKEval::new(command_parser::cmd("pb enc t3").unwrap(), lkread.state.clone(), |v| {
+            if v == "/" {
+                Ok("a".to_string())
+            } else {
+                Ok("".to_string())
+            }
+        })
+        .eval();
+        assert_eq!(
+            pr.out,
+            LKOut::from_vecs(
+                vec!["Copied output with command ./test_pb".to_string()],
+                vec![
+                    "warning: password / is not marked as correct".to_string(),
+                    "warning: password t1 is not marked as correct".to_string(),
+                    "warning: password t2 is not marked as correct".to_string(),
+                    "warning: password t3 is not marked as correct".to_string(),
+                ]
+            )
+        );
+        assert_eq!(std::fs::read_to_string("test_pb_out").expect("read"), "fief gild sits can un very");
     }
 }

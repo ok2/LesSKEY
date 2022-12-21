@@ -201,7 +201,7 @@ impl<'a> LKEval<'a> {
     fn cmd_pb(&self, out: &LKOut, command: &String) {
         match command_parser::cmd(command) {
             Ok(cmd) => {
-                let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
+                let print = LKEval::new(cmd, self.state.clone(), self.read_password).eval();
                 let data = print.out.data();
                 print.out.copy_err(&out);
                 if data.len() > 0 {
