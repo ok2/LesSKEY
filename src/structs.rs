@@ -323,16 +323,23 @@ mod tests {
             writeln!(writer, "#!/bin/sh\ncat >test_pb_out").expect("write");
         }
 
-        #[allow(unused_must_use)]
-        {
-            std::fs::remove_file("test_history");
-            std::fs::remove_file("test_init");
-            std::fs::remove_file("test_dump");
-            std::fs::remove_file("test_correct");
-            std::fs::remove_file("test_pb");
-            std::fs::remove_file("test_pb_out");
+        fn clear_test_files() {
+            #[allow(unused_must_use)]
+            {
+                std::fs::remove_file("test_history");
+                std::fs::remove_file("test_init");
+                std::fs::remove_file("test_dump");
+                std::fs::remove_file("test_correct");
+                std::fs::remove_file("test_pb");
+                std::fs::remove_file("test_pb_out");
+            }
         }
 
+        defer! {
+            clear_test_files();
+        }
+
+        clear_test_files();
         create_init();
         create_pb();
 
