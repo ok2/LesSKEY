@@ -1,33 +1,45 @@
 use crate::password::{Comment, Name, PasswordRef};
 use home::home_dir;
-use std::cell::RefCell;
+use rpassword::prompt_password;
+use rustyline::Editor;
 use std::fmt;
+use std::io::{BufWriter, Write};
 use std::path::Path;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+
+use crate::lk::LK;
+use crate::parser::command_parser;
+use crate::repl::{LKEval, LKRead};
 
 lazy_static! {
     pub static ref HISTORY_FILE: Box<Path> = {
-        match std::env::var("LESSKEY_HISTORY") {
+        match std::env::var("HEL_HISTORY") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".lesskey_history").into_boxed_path(),
+            _ => home_dir().unwrap().join(".hel_history").into_boxed_path(),
+        }
+    };
+    pub static ref PROMPT_SETTING: String = {
+        match std::env::var("HEL_PROMPT") {
+            Ok(v) => v,
+            _ => "> ".to_string(),
         }
     };
     pub static ref INIT_FILE: Box<Path> = {
-        match std::env::var("LESSKEY_INIT") {
+        match std::env::var("HEL_INIT") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".lesskeyrc").into_boxed_path(),
+            _ => home_dir().unwrap().join(".helrc").into_boxed_path(),
         }
     };
     pub static ref CORRECT_FILE: Box<Path> = {
-        match std::env::var("LESSKEY_CORRECT") {
+        match std::env::var("HEL_CORRECT") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".lesskey_correct").into_boxed_path(),
+            _ => home_dir().unwrap().join(".hel_correct").into_boxed_path(),
         }
     };
     pub static ref DUMP_FILE: Box<Path> = {
-        match std::env::var("LESSKEY_DUMP") {
+        match std::env::var("HEL_DUMP") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".lesskey_dump").into_boxed_path(),
+            _ => home_dir().unwrap().join(".hel_dump").into_boxed_path(),
         }
     };
 }
@@ -247,20 +259,132 @@ impl fmt::Display for Radix {
     }
 }
 
-/*
-impl fmt::Display for Radix {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let sign = if self.x < 0 { '-' } else { ' ' };
-        let mut x: u32 = self.x.abs() as u32;
-        write!(f, "{}{}", sign, (0..).map(|_| {
-                    let m = x % self.radix;
-                    x /= self.radix;
-                    (x, std::char::from_digit(m, self.radix).unwrap())
-                })
-                .take_while(|a| a.0 > 0).map(|b| b.1).collect::<String>()
-                .chars().rev().collect::<String>()
-        )?;
-        Ok(())
+pub fn init() -> LKRead {
+    let lk = Rc::new(RefCell::new(LK::new()));
+
+    match std::fs::read_to_string(INIT_FILE.to_str().unwrap()) {
+        Ok(script) => match command_parser::script(&script) {
+            Ok(cmd_list) => {
+                for cmd in cmd_list {
+                    LKEval::new(cmd, lk.clone(), prompt_password).eval().print();
+                }
+            }
+            Err(err) => {
+                LKEval::new(Command::Error(LKErr::ParseError(err)), lk.clone(), prompt_password).eval().print();
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => (),
+        Err(err) => {
+            LKEval::new(
+                Command::Error(LKErr::Error(
+                    format!("Failed to read init file {:?}: {}", INIT_FILE.to_str(), err).as_str(),
+                )),
+                lk.clone(),
+                prompt_password,
+            )
+            .eval()
+            .print();
+        }
+    }
+    LKRead::new(Editor::<()>::new().unwrap(), PROMPT_SETTING.to_string(), lk.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::password::Password;
+    use chrono::naive::NaiveDate;
+
+    #[test]
+    fn test_env() {
+        std::env::set_var("HEL_HISTORY", "./test_history");
+        std::env::set_var("HEL_INIT", "./test_init");
+        std::env::set_var("HEL_DUMP", "./test_dump");
+        std::env::set_var("HEL_CORRECT", "./test_correct");
+        std::env::set_var("HEL_PB", "./test_pb");
+        std::env::set_var("HEL_PROMPT", "test> ");
+
+        fn create_init() {
+            let file = std::fs::File::create("test_init").unwrap();
+            let mut writer = BufWriter::new(file);
+            writeln!(writer, "add t1 r 99 2022-10-10").expect("write");
+            writeln!(writer, "add t2 r 99 2022-10-10 test ^t1").expect("write");
+            writeln!(writer, "add t3 r 99 2022-10-10 ^t2 aoeu").expect("write");
+        }
+
+        #[allow(unused_must_use)]
+        {
+            std::fs::remove_file("test_history");
+            std::fs::remove_file("test_init");
+            std::fs::remove_file("test_dump");
+            std::fs::remove_file("test_correct");
+            std::fs::remove_file("test_pb");
+        }
+
+        create_init();
+        let lkread = init();
+        assert_eq!(lkread.prompt, "test> ");
+        assert_eq!(lkread.state.borrow().db.contains_key("t1"), true);
+
+        let t1 = Rc::new(RefCell::new(Password::new(
+            None,
+            "t1".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            NaiveDate::from_ymd_opt(2022, 10, 10).unwrap(),
+            None,
+        )));
+        let t2 = Rc::new(RefCell::new(Password::new(
+            None,
+            "t2".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            NaiveDate::from_ymd_opt(2022, 10, 10).unwrap(),
+            Some("test".to_string()),
+        )));
+        t2.borrow_mut().parent = Some(t1.clone());
+        let t3 = Rc::new(RefCell::new(Password::new(
+            None,
+            "t3".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            NaiveDate::from_ymd_opt(2022, 10, 10).unwrap(),
+            Some("aoeu".to_string()),
+        )));
+        t3.borrow_mut().parent = Some(t2.clone());
+        assert_eq!(*lkread.state.borrow().db.get("t1").unwrap().borrow(), *t1.borrow());
+        assert_eq!(*lkread.state.borrow().db.get("t2").unwrap().borrow(), *t2.borrow());
+        assert_eq!(*lkread.state.borrow().db.get("t3").unwrap().borrow(), *t3.borrow());
+
+        LKEval::new(command_parser::cmd("dump").unwrap(), lkread.state.clone(), prompt_password)
+            .eval()
+            .print();
+        assert_eq!(
+            std::fs::read_to_string("test_dump").expect("read"),
+            "add t1 R 99 2022-10-10\nadd t2 R 99 2022-10-10 test ^t1\nadd t3 R 99 2022-10-10 aoeu ^t2\n".to_string()
+        );
+
+        let pr = LKEval::new(command_parser::cmd("enc t2").unwrap(), lkread.state.clone(), |v| {
+            if v == "/" {
+                Ok("a".to_string())
+            } else {
+                Ok("".to_string())
+            }
+        })
+        .eval();
+        assert_eq!(
+            pr.out,
+            LKOut::from_vecs(
+                vec!["mid date os gaur gear let".to_string()],
+                vec![
+                    "warning: password / is not marked as correct".to_string(),
+                    "warning: password t1 is not marked as correct".to_string(),
+                    "warning: password t2 is not marked as correct".to_string(),
+                ]
+            )
+        );
     }
 }
-*/

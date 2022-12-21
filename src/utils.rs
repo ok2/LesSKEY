@@ -37,7 +37,7 @@ pub fn get_cmd_args_from_command(command: &str) -> io::Result<(String, Vec<Strin
 }
 
 pub fn get_copy_command_from_env() -> (String, Vec<String>) {
-    let cmd_os_str = env::var_os("LESSKEY_PB").unwrap_or_else(|| match env::consts::OS {
+    let cmd_os_str = env::var_os("HEL_PB").unwrap_or_else(|| match env::consts::OS {
         _ if env::var("TMUX").is_ok() => OsString::from("tmux load-buffer -"),
         "macos" => OsString::from("pbcopy"),
         "linux" => OsString::from("xclip"),

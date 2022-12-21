@@ -26,19 +26,24 @@ impl LK {
             let comment = name.borrow().comment.clone();
             match comment {
                 Some(comment) => {
-                        let mut changed = false;
-                    let new = RE.replace(comment.as_str(), |c: &Captures| {
-                        let folder = c[1].to_string();
-                        match self.db.get(&folder) {
-                            Some(entry) => {
-                                name.borrow_mut().parent = Some(entry.clone());
-                                changed = true;
+                    let mut changed = false;
+                    let new = RE
+                        .replace(comment.as_str(), |c: &Captures| {
+                            let folder = c[1].to_string();
+                            match self.db.get(&folder) {
+                                Some(entry) => {
+                                    name.borrow_mut().parent = Some(entry.clone());
+                                    changed = true;
+                                }
+                                None => (),
                             }
-                            None => (),
-                        }
-                        ""
-                    }).to_string();
-                    if changed && new != comment { name.borrow_mut().comment = if new.len() > 0 { Some(new) } else { None } }
+                            ""
+                        })
+                        .trim()
+                        .to_string();
+                    if changed && new != comment {
+                        name.borrow_mut().comment = if new.len() > 0 { Some(new) } else { None }
+                    }
                 }
                 None => (),
             }

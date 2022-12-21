@@ -17,25 +17,25 @@ use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_comm
 
 #[derive(Debug)]
 pub struct LKRead {
-    rl: Editor<()>,
-    prompt: String,
-    state: Rc<RefCell<LK>>,
-    cmd: String,
-    read_password: fn(String) -> std::io::Result<String>,
+    pub rl: Editor<()>,
+    pub prompt: String,
+    pub state: Rc<RefCell<LK>>,
+    pub cmd: String,
+    pub read_password: fn(String) -> std::io::Result<String>,
 }
 
 #[derive(Debug)]
 pub struct LKEval<'a> {
-    cmd: Command<'a>,
-    state: Rc<RefCell<LK>>,
-    read_password: fn(String) -> std::io::Result<String>,
+    pub cmd: Command<'a>,
+    pub state: Rc<RefCell<LK>>,
+    pub read_password: fn(String) -> std::io::Result<String>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LKPrint {
-    out: LKOut,
-    quit: bool,
-    state: Rc<RefCell<LK>>,
+    pub out: LKOut,
+    pub quit: bool,
+    pub state: Rc<RefCell<LK>>,
 }
 
 impl LKRead {
@@ -129,8 +129,8 @@ impl<'a> LKEval<'a> {
                     match (self.read_password)("Master: ".to_string()) {
                         Ok(password) => {
                             let name = "/".to_string();
-                            self.state.borrow_mut().secrets.insert(name.to_string(), password.clone());
                             self.cmd_correct(&out, &name, true, Some(password.clone()));
+                            self.state.borrow_mut().secrets.insert(name, password.clone());
                             Some(password)
                         }
                         Err(_) => None,
@@ -147,14 +147,16 @@ impl<'a> LKEval<'a> {
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
                     let name = pn.borrow().name.to_string();
-                    self.state.borrow_mut().secrets.insert(name.to_string(), password.as_ref().unwrap().clone());
                     self.cmd_correct(&out, &name, true, Some(password.as_ref().unwrap().clone()));
+                    self.state.borrow_mut().secrets.insert(name, password.as_ref().unwrap().clone());
                     password
                 } else {
                     match self.read_master(&out, pn.clone(), read) {
                         Some(master) => {
                             let password = pn.borrow().encode(master.as_str());
-                            self.state.borrow_mut().secrets.insert(pn.borrow().name.to_string(), password.clone());
+                            let name = pn.borrow().name.to_string();
+                            self.cmd_correct(&out, &name, true, Some(master));
+                            self.state.borrow_mut().secrets.insert(name, password.clone());
                             Some(password)
                         }
                         None => None,
@@ -270,7 +272,9 @@ impl<'a> LKEval<'a> {
         fn save_dump(data: &HashMap<Name, PasswordRef>, script: &String) -> std::io::Result<()> {
             let file = fs::File::create(script)?;
             let mut writer = BufWriter::new(file);
-            for (_, pwd) in data {
+            let mut vals = data.values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
+            vals.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
+            for pwd in vals {
                 writeln!(writer, "add {}", pwd.borrow().to_string())?
             }
             Ok(())
@@ -439,7 +443,9 @@ impl<'a> LKEval<'a> {
                         fix = true;
                     }
                 }
-                if fix { state.fix_hierarchy(); }
+                if fix {
+                    state.fix_hierarchy();
+                }
             }
             Command::Comment(name, comment) => match self.get_password(name) {
                 Some(pwd) => {
@@ -701,7 +707,9 @@ mod tests {
                     vec!["san bud most noon jaw cash".to_string()],
                     vec![
                         "warning: password / is not marked as correct".to_string(),
-                        "warning: password t3 is not marked as correct".to_string()
+                        "warning: password t1 is not marked as correct".to_string(),
+                        "warning: password t2 is not marked as correct".to_string(),
+                        "warning: password t3 is not marked as correct".to_string(),
                     ]
                 ),
                 false,
