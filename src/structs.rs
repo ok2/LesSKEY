@@ -3,7 +3,6 @@ use home::home_dir;
 use rpassword::prompt_password;
 use rustyline::Editor;
 use std::fmt;
-use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::{cell::RefCell, rc::Rc};
 
@@ -294,6 +293,7 @@ mod tests {
     use super::*;
     use crate::password::Password;
     use chrono::naive::NaiveDate;
+    use std::io::{BufWriter, Write};
 
     #[test]
     fn test_env() {
