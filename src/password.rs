@@ -47,6 +47,19 @@ impl Password {
         }
     }
 
+    pub fn from_password(password: &Password) -> PasswordRef {
+        Rc::new(RefCell::new(Self {
+            parent: password.parent.clone(),
+            prefix: password.prefix.clone(),
+            name: password.name.clone(),
+            length: password.length.clone(),
+            mode: password.mode.clone(),
+            seq: password.seq,
+            date: password.date.clone(),
+            comment: password.comment.clone(),
+        }))
+    }
+
     pub fn encode(&self, secret: &str) -> String {
         let skey = SKey::new(&self.name, self.seq, secret);
         let (sep, len) = match (&self.length, &self.mode) {

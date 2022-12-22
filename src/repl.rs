@@ -106,9 +106,8 @@ impl<'a> LKEval<'a> {
                 }
                 None => out.e(format!("error: password {} not found", name)),
             },
-            Command::Enc(name) => {
-                self.cmd_enc(&out, name);
-            }
+            Command::Enc(name) => { self.cmd_enc(&out, name); }
+            Command::Gen(num, name) => self.cmd_gen(&out, &num, &name),
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
             Command::Source(script) => self.cmd_source(&out, script),
             Command::Dump(script) => self.cmd_dump(&out, script),

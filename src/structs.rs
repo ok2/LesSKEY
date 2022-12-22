@@ -60,6 +60,7 @@ pub enum Command<'a> {
     Mv(Name, Name),
     Rm(Name),
     Enc(Name),
+    Gen(u32, PasswordRef),
     Pass(Name),
     UnPass(Name),
     Correct(Name),
@@ -74,7 +75,7 @@ pub enum Command<'a> {
     Quit,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Mode {
     Regular,
     RegularUpcase,

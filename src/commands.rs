@@ -5,10 +5,13 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::io::{BufWriter, Write};
+use std::rc::Rc;
+use std::cmp::min;
+use rand::{thread_rng, Rng};
 
 use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
-use crate::password::{Name, PasswordRef};
+use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
 use crate::structs::{LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env};
@@ -408,5 +411,48 @@ impl<'a> LKEval<'a> {
             )),
             Err(e) => out.e(format!("error: failed to write: {}", e.to_string())),
         };
+    }
+
+    pub fn cmd_gen(&self, out: &LKOut, num: &u32, name: &PasswordRef) {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^.+?(G+|X+)$").unwrap();
+        }
+        let mut rng = thread_rng();
+        let num: usize = (*num).try_into().unwrap();
+        let pwd = name.borrow();
+        let secret = "a".to_string();
+        let mut genpwds: Vec<(PasswordRef, String)> = Vec::new();
+        match RE.captures(pwd.name.as_ref()) {
+            Some(caps) => {
+                let gen = &caps[1];
+                if gen.starts_with("G") {
+                    let name = pwd.name.trim_end_matches('G');
+                    for num in 1..10_u32.pow(gen.len().try_into().unwrap()) {
+                        let npwd = Password::from_password(&pwd);
+                        npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
+                        let pass = npwd.borrow().encode(&secret);
+                        genpwds.push((npwd, pass));
+                    }
+                } else {
+                    let name = gen.trim_end_matches('X');
+                    let num = rng.gen_range(1..10_u32.pow(gen.len().try_into().unwrap()));
+                    let npwd = Password::from_password(&pwd);
+                    npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
+                    let pass = npwd.borrow().encode(&secret);
+                    genpwds.push((npwd, pass));
+                }
+            }
+            None => {
+                let npwd = Password::from_password(&pwd);
+                let pass = npwd.borrow().encode(&secret);
+                genpwds.push((npwd, pass));
+            }
+        }
+        genpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        out.o(format!("{:>30}{:>4} {}", "Name", "Len", "Password"));
+        for num in (genpwds.len()-min(genpwds.len(), num))..genpwds.len() {
+            let (pwd, pass) = (genpwds[num].0.borrow(), genpwds[num].1.to_string());
+            out.o(format!("{:>30}{:>4} {}", pwd.to_string(), pass.len(), pass));
+        }
     }
 }

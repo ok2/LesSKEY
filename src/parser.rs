@@ -21,6 +21,7 @@ peg::parser! {
             / dump_cmd()
             / dump_def_cmd()
             / enc_cmd()
+            / gen_cmd()
             / pass_cmd()
             / unpass_cmd()
             / correct_cmd()
@@ -51,12 +52,14 @@ peg::parser! {
             match name { Some(n) => Ok(n), None => Err("failed to parse password description") }
         }
 
-        rule date() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
+        rule ndate() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
             let year:  i32 = match y.parse() { Ok(n) => n, Err(_) => return Err("year") };
             let month: u32 = match m.parse() { Ok(n) => n, Err(_) => return Err("month") };
             let day:   u32 = match d.parse() { Ok(n) => n, Err(_) => return Err("day") };
             NaiveDate::from_ymd_opt(year, month, day).ok_or("date")
         }
+        rule cdate() -> NaiveDate = "now" { Local::now().naive_local().date() }
+        rule date() -> NaiveDate = d:(ndate() / cdate()) { d }
         rule umode() -> Mode = ("U" / "u") m:$("R" / "r" / "N" / "n" / "H" / "h" / "B" / "b") {?
             match m.to_uppercase().as_str() {
                 "R" => Ok(Mode::RegularUpcase),
@@ -88,6 +91,9 @@ peg::parser! {
         rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
+        rule gen_cmd() -> Command<'input> = "gen" n:num()? _ name:name() {
+            Command::Gen(match n { Some(n) => n, None => 10_u32 }, Rc::new(RefCell::new(name)))
+        }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
         rule pass_cmd() -> Command<'input> = "pass" _ name:word() { Command::Pass(name) }
