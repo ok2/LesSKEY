@@ -434,7 +434,7 @@ impl<'a> LKEval<'a> {
                         genpwds.push((npwd, pass));
                     }
                 } else {
-                    let name = gen.trim_end_matches('X');
+                    let name = pwd.name.trim_end_matches('X');
                     let num = rng.gen_range(1..10_u32.pow(gen.len().try_into().unwrap()));
                     let npwd = Password::from_password(&pwd);
                     npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
