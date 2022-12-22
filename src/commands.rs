@@ -454,6 +454,7 @@ impl<'a> LKEval<'a> {
             self.state.borrow_mut().ls.insert(key.to_string(), pwd.clone());
             lspwds.push((pwd, key));
         }
+        self.state.borrow().fix_hierarchy();
         let mut err = match &out.err { Some(e) => Some(e.clone()), None => None };
         let mut encpwds: Vec<(PasswordRef, String)> = Vec::new();
         for (pwd, key) in lspwds {
@@ -467,13 +468,13 @@ impl<'a> LKEval<'a> {
         encpwds.sort_by(|a,b| b.1.len().cmp(&a.1.len()));
         self.state.borrow_mut().ls.clear();
         let mut counter = 1;
-        out.o(format!("{:>3}{:>30}{:>4} {}", "", "Name", "Len", "Password"));
+        out.o(format!("{:>3} {:>36} {:>4} {}", "", "Password", "Len", "Name"));
         for num in (encpwds.len()-min(genpwds.len(), num))..encpwds.len() {
             let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
             self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
-            out.o(format!("{:>3}{:>30}{:>4} {}", key, pwd.borrow().to_string(), pass.len(), pass));
+            out.o(format!("{:>3} {:>36} {:>4} {}", key, pass, pass.len(), pwd.borrow().to_string()));
         }
     }
 }
