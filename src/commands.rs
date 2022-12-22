@@ -420,8 +420,7 @@ impl<'a> LKEval<'a> {
         let mut rng = thread_rng();
         let num: usize = (*num).try_into().unwrap();
         let pwd = name.borrow();
-        let secret = "a".to_string();
-        let mut genpwds: Vec<(PasswordRef, String)> = Vec::new();
+        let mut genpwds: Vec<PasswordRef> = Vec::new();
         match RE.captures(pwd.name.as_ref()) {
             Some(caps) => {
                 let gen = &caps[1];
@@ -430,29 +429,51 @@ impl<'a> LKEval<'a> {
                     for num in 1..10_u32.pow(gen.len().try_into().unwrap()) {
                         let npwd = Password::from_password(&pwd);
                         npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
-                        let pass = npwd.borrow().encode(&secret);
-                        genpwds.push((npwd, pass));
+                        genpwds.push(npwd);
                     }
                 } else {
                     let name = pwd.name.trim_end_matches('X');
                     let num = rng.gen_range(1..10_u32.pow(gen.len().try_into().unwrap()));
                     let npwd = Password::from_password(&pwd);
                     npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
-                    let pass = npwd.borrow().encode(&secret);
-                    genpwds.push((npwd, pass));
+                    genpwds.push(npwd);
                 }
             }
             None => {
                 let npwd = Password::from_password(&pwd);
-                let pass = npwd.borrow().encode(&secret);
-                genpwds.push((npwd, pass));
+                genpwds.push(npwd);
             }
         }
-        genpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-        out.o(format!("{:>30}{:>4} {}", "Name", "Len", "Password"));
-        for num in (genpwds.len()-min(genpwds.len(), num))..genpwds.len() {
-            let (pwd, pass) = (genpwds[num].0.borrow(), genpwds[num].1.to_string());
-            out.o(format!("{:>30}{:>4} {}", pwd.to_string(), pass.len(), pass));
+        self.state.borrow_mut().ls.clear();
+        let mut counter = 1;
+        let mut lspwds: Vec<(PasswordRef, String)> = Vec::new();
+        for num in 0..genpwds.len() {
+            let pwd = genpwds[num].clone();
+            let key = Radix::new(counter, 36).unwrap().to_string();
+            counter += 1;
+            self.state.borrow_mut().ls.insert(key.to_string(), pwd.clone());
+            lspwds.push((pwd, key));
+        }
+        let mut err = match &out.err { Some(e) => Some(e.clone()), None => None };
+        let mut encpwds: Vec<(PasswordRef, String)> = Vec::new();
+        for (pwd, key) in lspwds {
+            let pass = match self.cmd_enc(&LKOut::from_lkout(None, err), &key) {
+                Some((_, pass)) => pass,
+                None => { out.e(format!("error: failed to encrypt password")); return; },
+            };
+            err = None;
+            encpwds.push((pwd.clone(), pass));
+        }
+        encpwds.sort_by(|a,b| b.1.len().cmp(&a.1.len()));
+        self.state.borrow_mut().ls.clear();
+        let mut counter = 1;
+        out.o(format!("{:>3}{:>30}{:>4} {}", "", "Name", "Len", "Password"));
+        for num in (encpwds.len()-min(genpwds.len(), num))..encpwds.len() {
+            let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
+            let key = Radix::new(counter, 36).unwrap().to_string();
+            counter += 1;
+            self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
+            out.o(format!("{:>3}{:>30}{:>4} {}", key, pwd.borrow().to_string(), pass.len(), pass));
         }
     }
 }

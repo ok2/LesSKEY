@@ -22,7 +22,8 @@ impl LK {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"\s*\^([!-~]+)").unwrap();
         }
-        for (_, name) in &self.db {
+        for db in vec![&self.db, &self.ls] {
+        for (_, name) in db {
             let comment = name.borrow().comment.clone();
             match comment {
                 Some(comment) => {
@@ -48,6 +49,7 @@ impl LK {
                 None => (),
             }
             fix_password_recursion(name.clone());
+        }
         }
     }
 }
