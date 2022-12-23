@@ -122,7 +122,7 @@ add t3 C 99 2022-12-14"###
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t1".to_string()),
+                    name: "t1".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -132,7 +132,7 @@ add t3 C 99 2022-12-14"###
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t2".to_string()),
+                    name: "t2".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -142,7 +142,7 @@ add t3 C 99 2022-12-14"###
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t3".to_string()),
+                    name: "t3".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -162,7 +162,7 @@ add t3 C 99 2022-12-14
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t1".to_string()),
+                    name: "t1".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -172,7 +172,7 @@ add t3 C 99 2022-12-14
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t2".to_string()),
+                    name: "t2".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -182,7 +182,7 @@ add t3 C 99 2022-12-14
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t3".to_string()),
+                    name: "t3".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -204,7 +204,7 @@ add t3 C 99 2022-12-14
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t1".to_string()),
+                    name: "t1".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -214,7 +214,7 @@ add t3 C 99 2022-12-14
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t2".to_string()),
+                    name: "t2".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -224,7 +224,7 @@ add t3 C 99 2022-12-14
                 Command::Add(Rc::new(RefCell::new(Password {
                     parent: None,
                     prefix: None,
-                    name: Rc::new("t3".to_string()),
+                    name: "t3".to_string(),
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
@@ -242,7 +242,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: None,
                 mode: Mode::Regular,
@@ -255,7 +255,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("ableton89 U 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: None,
                 mode: Mode::RegularUpcase,
@@ -268,7 +268,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("ableton89 U 2020-12-09"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: None,
                 mode: Mode::RegularUpcase,
@@ -281,7 +281,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 R 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::Regular,
@@ -294,7 +294,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 N 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::NoSpace,
@@ -307,7 +307,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 UN 99 2020-12-09 xx.ableton@domain.info https://www.ableton.com"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::NoSpaceUpcase,
@@ -320,7 +320,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 20R 99 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::Regular,
@@ -333,7 +333,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 20UR 99 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::RegularUpcase,
@@ -346,7 +346,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 20UH 99 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::HexUpcase,
@@ -359,7 +359,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 20UB 99 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::Base64Upcase,
@@ -372,7 +372,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("#W9 ableton89 20D 99 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: Some("#W9".to_string()),
                 mode: Mode::Decimal,
@@ -385,7 +385,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("ableton89 20D 98 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: None,
                 mode: Mode::Decimal,
@@ -398,7 +398,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("ableton89 20C 98 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: None,
                 mode: Mode::NoSpaceCamel,
@@ -411,7 +411,7 @@ add t3 C 99 2022-12-14
         assert_eq!(
             command_parser::name("ableton89 20D 2020-12-09 a b c"),
             Ok(Password {
-                name: Rc::new("ableton89".to_string()),
+                name: "ableton89".to_string(),
                 parent: None,
                 prefix: None,
                 mode: Mode::Decimal,

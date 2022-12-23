@@ -101,7 +101,7 @@ impl<'a> LKEval<'a> {
             Command::Comment(name, comment) => self.cmd_comment(&out, &name, &comment),
             Command::Rm(name) => match self.get_password(name) {
                 Some(pwd) => {
-                    self.state.borrow_mut().db.remove(pwd.borrow().name.as_ref());
+                    self.state.borrow_mut().db.remove(&pwd.borrow().name);
                     out.o(format!("removed {}", pwd.borrow().name));
                 }
                 None => out.e(format!("error: password {} not found", name)),
@@ -174,7 +174,7 @@ mod tests {
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         let pwd1 = Rc::new(RefCell::new(Password {
-            name: Rc::new("t1".to_string()),
+            name: "t1".to_string(),
             prefix: None,
             length: None,
             mode: Mode::Regular,
@@ -201,7 +201,7 @@ mod tests {
             LKPrint::new(LKOut::from_vecs(vec![], vec!["Bye!".to_string()]), true, lk.clone())
         );
         let pwd2 = Rc::new(RefCell::new(Password {
-            name: Rc::new("t2".to_string()),
+            name: "t2".to_string(),
             prefix: None,
             length: None,
             mode: Mode::Regular,

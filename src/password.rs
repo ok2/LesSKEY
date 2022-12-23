@@ -4,7 +4,6 @@ use chrono::naive::NaiveDate;
 use std::{cell::RefCell, rc::Rc};
 
 pub type Name = String;
-pub type NameRef = Rc<Name>;
 pub type Prefix = Option<String>;
 pub type Comment = Option<String>;
 pub type PasswordRef = Rc<RefCell<Password>>;
@@ -17,7 +16,7 @@ pub type Date = NaiveDate;
 pub struct Password {
     pub parent: Parent,
     pub prefix: Prefix,
-    pub name: NameRef,
+    pub name: Name,
     pub length: Length,
     pub mode: Mode,
     pub seq: Seq,
@@ -37,7 +36,7 @@ impl Password {
     ) -> Password {
         Password {
             prefix,
-            name: Rc::new(name),
+            name: name,
             length,
             mode,
             date,

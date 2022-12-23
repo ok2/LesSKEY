@@ -1,13 +1,12 @@
+use rand::{thread_rng, Rng};
 use regex::Regex;
 use rpassword::prompt_password;
 use sha1::{Digest, Sha1};
+use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::io::{BufWriter, Write};
-use std::rc::Rc;
-use std::cmp::min;
-use rand::{thread_rng, Rng};
 
 use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
@@ -18,9 +17,9 @@ use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_comm
 
 impl<'a> LKEval<'a> {
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
-        match self.state.borrow().db.get(name) {
+        match self.state.borrow().ls.get(name) {
             Some(pwd) => Some(pwd.clone()),
-            None => match self.state.borrow().ls.get(name) {
+            None => match self.state.borrow().db.get(name) {
                 Some(pwd) => Some(pwd.clone()),
                 None => None,
             },
@@ -129,7 +128,7 @@ impl<'a> LKEval<'a> {
         match self.get_password(name) {
             Some(p) => {
                 let pwd = (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap();
-                self.cmd_correct(&out, &p.borrow().name.as_ref(), true, Some(pwd.clone()));
+                self.cmd_correct(&out, &p.borrow().name, true, Some(pwd.clone()));
                 self.state.borrow_mut().secrets.insert(p.borrow().name.to_string(), pwd);
             }
             None => {
@@ -428,14 +427,14 @@ impl<'a> LKEval<'a> {
                     let name = pwd.name.trim_end_matches('G');
                     for num in 1..10_u32.pow(gen.len().try_into().unwrap()) {
                         let npwd = Password::from_password(&pwd);
-                        npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
+                        npwd.borrow_mut().name = format!("{}{}", name, num).to_string();
                         genpwds.push(npwd);
                     }
                 } else {
                     let name = pwd.name.trim_end_matches('X');
                     let num = rng.gen_range(1..10_u32.pow(gen.len().try_into().unwrap()));
                     let npwd = Password::from_password(&pwd);
-                    npwd.borrow_mut().name = Rc::new(format!("{}{}", name, num).to_string());
+                    npwd.borrow_mut().name = format!("{}{}", name, num).to_string();
                     genpwds.push(npwd);
                 }
             }
@@ -455,21 +454,32 @@ impl<'a> LKEval<'a> {
             lspwds.push((pwd, key));
         }
         self.state.borrow().fix_hierarchy();
-        let mut err = match &out.err { Some(e) => Some(e.clone()), None => None };
+        let mut err = match &out.err {
+            Some(e) => Some(e.clone()),
+            None => None,
+        };
         let mut encpwds: Vec<(PasswordRef, String)> = Vec::new();
         for (pwd, key) in lspwds {
             let pass = match self.cmd_enc(&LKOut::from_lkout(None, err), &key) {
-                Some((_, pass)) => pass,
-                None => { out.e(format!("error: failed to encrypt password")); return; },
+                Some((name, pass)) => {
+                    if name != pwd.borrow().name {
+                        panic!("INTERNAL_ERROR: wrong name found: {} != {}", name, pwd.borrow().name);
+                    };
+                    pass
+                }
+                None => {
+                    out.e(format!("error: failed to encrypt password"));
+                    return;
+                }
             };
             err = None;
             encpwds.push((pwd.clone(), pass));
         }
-        encpwds.sort_by(|a,b| b.1.len().cmp(&a.1.len()));
+        encpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
         self.state.borrow_mut().ls.clear();
         let mut counter = 1;
         out.o(format!("{:>3} {:>36} {:>4} {}", "", "Password", "Len", "Name"));
-        for num in (encpwds.len()-min(genpwds.len(), num))..encpwds.len() {
+        for num in (encpwds.len() - min(genpwds.len(), num))..encpwds.len() {
             let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;

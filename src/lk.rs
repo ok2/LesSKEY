@@ -23,33 +23,33 @@ impl LK {
             static ref RE: Regex = Regex::new(r"\s*\^([!-~]+)").unwrap();
         }
         for db in vec![&self.db, &self.ls] {
-        for (_, name) in db {
-            let comment = name.borrow().comment.clone();
-            match comment {
-                Some(comment) => {
-                    let mut changed = false;
-                    let new = RE
-                        .replace(comment.as_str(), |c: &Captures| {
-                            let folder = c[1].to_string();
-                            match self.db.get(&folder) {
-                                Some(entry) => {
-                                    name.borrow_mut().parent = Some(entry.clone());
-                                    changed = true;
+            for (_, name) in db {
+                let comment = name.borrow().comment.clone();
+                match comment {
+                    Some(comment) => {
+                        let mut changed = false;
+                        let new = RE
+                            .replace(comment.as_str(), |c: &Captures| {
+                                let folder = c[1].to_string();
+                                match self.db.get(&folder) {
+                                    Some(entry) => {
+                                        name.borrow_mut().parent = Some(entry.clone());
+                                        changed = true;
+                                    }
+                                    None => (),
                                 }
-                                None => (),
-                            }
-                            ""
-                        })
-                        .trim()
-                        .to_string();
-                    if changed && new != comment {
-                        name.borrow_mut().comment = if new.len() > 0 { Some(new) } else { None }
+                                ""
+                            })
+                            .trim()
+                            .to_string();
+                        if changed && new != comment {
+                            name.borrow_mut().comment = if new.len() > 0 { Some(new) } else { None }
+                        }
                     }
+                    None => (),
                 }
-                None => (),
+                fix_password_recursion(name.clone());
             }
-            fix_password_recursion(name.clone());
-        }
         }
     }
 }
