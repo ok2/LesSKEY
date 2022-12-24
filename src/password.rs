@@ -113,7 +113,7 @@ impl std::string::ToString for Password {
             Some(s) => format!(" ^{}", s.borrow().name),
             None => "".to_string(),
         };
-        format!("{}{} {}{} {} {}{}{}", prefix, self.name, length, self.mode, self.seq, self.date, comment, parent)
+        format!("{:>6}{} {}{} {} {}{}{}", prefix, self.name, length, self.mode, self.seq, self.date, comment, parent)
     }
 }
 

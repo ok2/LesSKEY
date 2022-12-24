@@ -215,20 +215,20 @@ impl<'a> LKEval<'a> {
         };
     }
 
-    pub fn cmd_source(&self, out: &LKOut, source: &String) {
+    pub fn cmd_source(&self, out: &LKOut, source: &String) -> bool {
         let script = if source.trim().ends_with("|") {
             let (cmd, args) = match get_cmd_args_from_command(source.trim().trim_end_matches('|')) {
                 Ok(c) => c,
                 Err(e) => {
                     out.e(format!("error: failed to parse command {:?}: {}", source, e.to_string()));
-                    return;
+                    return false;
                 }
             };
             match call_cmd_with_input(&cmd, &args, "") {
                 Ok(o) => o,
                 Err(e) => {
                     out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
-                    return;
+                    return false;
                 }
             }
         } else {
@@ -237,7 +237,7 @@ impl<'a> LKEval<'a> {
                 Ok(script) => script,
                 Err(e) => {
                     out.e(format!("error: failed to read file {}: {}", source, e.to_string()));
-                    return;
+                    return false;
                 }
             }
         };
@@ -246,13 +246,14 @@ impl<'a> LKEval<'a> {
                 for cmd in cmd_list {
                     let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
                     print.out.copy(&out);
+                    if print.quit { return true; }
                 }
             }
             Err(e) => {
                 out.e(format!("error: {}", e.to_string()));
-                return;
             }
         };
+        false
     }
 
     pub fn cmd_dump(&self, out: &LKOut, script: &Option<String>) {
@@ -308,7 +309,10 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn cmd_ls(&self, out: &LKOut, filter: String) {
+    pub fn cmd_ls<F>(&self, out: &LKOut, filter: String, sort_by: F)
+    where
+        F: Fn(&PasswordRef, &PasswordRef) -> std::cmp::Ordering,
+    {
         let re = match Regex::new(&filter) {
             Ok(re) => re,
             Err(e) => {
@@ -326,7 +330,8 @@ impl<'a> LKEval<'a> {
                 tmp.push(name.clone());
             }
         }
-        tmp.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
+        tmp.sort_by(|a,b| a.borrow().name.cmp(&b.borrow().name));
+        tmp.sort_by(sort_by);
         self.state.borrow_mut().ls.clear();
         let mut counter = 1;
         for pwd in tmp {

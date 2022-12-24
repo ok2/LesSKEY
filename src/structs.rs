@@ -57,6 +57,7 @@ pub enum LKErr<'a> {
 pub enum Command<'a> {
     Add(PasswordRef),
     Ls(String),
+    Ld(String),
     Mv(Name, Name),
     Rm(Name),
     Enc(Name),
@@ -259,14 +260,14 @@ impl fmt::Display for Radix {
     }
 }
 
-pub fn init() -> LKRead {
+pub fn init() -> Option<LKRead> {
     let lk = Rc::new(RefCell::new(LK::new()));
 
     match std::fs::read_to_string(INIT_FILE.to_str().unwrap()) {
         Ok(script) => match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    LKEval::new(cmd, lk.clone(), prompt_password).eval().print();
+                    if !LKEval::new(cmd, lk.clone(), prompt_password).eval().print() { return None; }
                 }
             }
             Err(err) => {
@@ -286,7 +287,7 @@ pub fn init() -> LKRead {
             .print();
         }
     }
-    LKRead::new(Editor::<()>::new().unwrap(), PROMPT_SETTING.to_string(), lk.clone())
+    Some(LKRead::new(Editor::<()>::new().unwrap(), PROMPT_SETTING.to_string(), lk.clone()))
 }
 
 #[cfg(test)]

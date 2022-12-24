@@ -14,6 +14,7 @@ peg::parser! {
             / quit_cmd()
             / error_cmd()
             / ls_cmd()
+            / ld_cmd()
             / mv_cmd()
             / rm_cmd()
             / pb_cmd()
@@ -90,6 +91,7 @@ peg::parser! {
         rule dump_def_cmd() -> Command<'input> = "dump" { Command::Dump(None) }
         rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
+        rule ld_cmd() -> Command<'input> = "ld" f:comment()? { Command::Ld(f.unwrap_or(".".to_string())) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
         rule gen_cmd() -> Command<'input> = "gen" n:num()? _ name:name() {
             Command::Gen(match n { Some(n) => n, None => 10_u32 }, Rc::new(RefCell::new(name)))

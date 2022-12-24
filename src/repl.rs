@@ -96,7 +96,8 @@ impl<'a> LKEval<'a> {
                 out.e("Bye!".to_string());
                 quit = true;
             }
-            Command::Ls(filter) => self.cmd_ls(&out, filter.to_string()),
+            Command::Ls(filter) => self.cmd_ls(&out, filter.to_string(), |a,b| a.borrow().name.cmp(&b.borrow().name)),
+            Command::Ld(filter) => self.cmd_ls(&out, filter.to_string(), |a,b| b.borrow().date.cmp(&a.borrow().date)),
             Command::Add(name) => self.cmd_add(&out, &name),
             Command::Comment(name, comment) => self.cmd_comment(&out, &name, &comment),
             Command::Rm(name) => match self.get_password(name) {
@@ -109,7 +110,7 @@ impl<'a> LKEval<'a> {
             Command::Enc(name) => { self.cmd_enc(&out, name); }
             Command::Gen(num, name) => self.cmd_gen(&out, &num, &name),
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
-            Command::Source(script) => self.cmd_source(&out, script),
+            Command::Source(script) => { quit = self.cmd_source(&out, script); }
             Command::Dump(script) => self.cmd_dump(&out, script),
             Command::Pass(name) => self.cmd_pass(&out, &name),
             Command::UnPass(name) => match self.state.borrow_mut().secrets.remove(name) {
