@@ -33,7 +33,7 @@ pub fn get_cmd_args_from_command(command: &str) -> io::Result<(String, Vec<Strin
             ))
         }
     };
-    Ok((args[0].clone(), args[1..].to_vec()))
+    Ok((shellexpand::full(&args[0]).unwrap().into_owned(), args[1..].to_vec()))
 }
 
 pub fn get_copy_command_from_env() -> (String, Vec<String>) {
