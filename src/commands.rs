@@ -105,6 +105,14 @@ impl<'a> LKEval<'a> {
         }
     }
 
+    pub fn cmd_leave(&self, out: &LKOut, name: &Name) {
+        let pwd = match self.state.borrow().ls.get(name) {
+            Some(pwd) => pwd.clone(),
+            None => { out.e(format!("error: {} not found", name)); return; }
+        };
+        self.cmd_add(&out, &pwd);
+    }
+
     pub fn cmd_mv(&self, out: &LKOut, name: &String, folder: &String) {
         match self.get_password(name) {
             Some(pwd) => {

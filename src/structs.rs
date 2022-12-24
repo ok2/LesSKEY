@@ -56,6 +56,7 @@ pub enum LKErr<'a> {
 #[derive(PartialEq, Debug)]
 pub enum Command<'a> {
     Add(PasswordRef),
+    Leave(Name),
     Ls(String),
     Ld(String),
     Mv(Name, Name),

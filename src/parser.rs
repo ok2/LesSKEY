@@ -8,29 +8,12 @@ use std::{cell::RefCell, rc::Rc};
 
 peg::parser! {
     pub grammar command_parser() for str {
-        pub rule cmd() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(
-            help_cmd()
-            / add_cmd()
-            / quit_cmd()
-            / error_cmd()
-            / ls_cmd()
-            / ld_cmd()
-            / mv_cmd()
-            / rm_cmd()
-            / pb_cmd()
-            / source_cmd()
-            / dump_cmd()
-            / dump_def_cmd()
-            / enc_cmd()
-            / gen_cmd()
-            / pass_cmd()
-            / unpass_cmd()
-            / correct_cmd()
-            / uncorrect_cmd()
-            / noop_cmd()
-            / comment_cmd()
-        ) { c }
-        pub rule script() -> Vec<Command<'input>> = c:cmd() ++ "\n" { c }
+        pub rule cmd() -> Command<'input> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) { c }
+        pub rule info_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(ls_cmd() / ld_cmd() / pb_cmd() / dump_cmd() / dump_def_cmd()) { c }
+        pub rule mod_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(add_cmd() / leave_cmd() / mv_cmd() / rm_cmd() / comment_cmd ()) { c }
+        pub rule asides_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(help_cmd() / source_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
+        pub rule enc_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(enc_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
+        pub rule script() -> Vec<Command<'input>> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) ++ "\n" { c }
 
         rule _() -> &'input str = s:$((" " / "\t" / "\r")+) { s }
         rule comment() -> String = _ c:$([' '..='~']+) { c.to_string() }
@@ -83,7 +66,8 @@ peg::parser! {
             }
         }
         rule mode() -> Mode = m:(umode() / rmode()) { m }
-        rule noop_cmd() -> Command<'input> = (" " / "\r" / "\n" / "\t")* ("#" comment())? { Command::Noop }
+
+        rule noop_cmd() -> Command<'input> = ("#" [' '..='~']*)? { Command::Noop }
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
         rule pb_cmd() -> Command<'input> = "pb" _ e:$(([' '..='~'])+) { Command::PasteBuffer(e.to_string()) }
@@ -93,6 +77,7 @@ peg::parser! {
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule ld_cmd() -> Command<'input> = "ld" f:comment()? { Command::Ld(f.unwrap_or(".".to_string())) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
+        rule leave_cmd() -> Command<'input> = "leave" _ name:word() { Command::Leave(name.to_string()) }
         rule gen_cmd() -> Command<'input> = "gen" n:num()? _ name:name() {
             Command::Gen(match n { Some(n) => n, None => 10_u32 }, Rc::new(RefCell::new(name)))
         }

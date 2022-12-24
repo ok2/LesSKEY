@@ -99,6 +99,7 @@ impl<'a> LKEval<'a> {
             Command::Ls(filter) => self.cmd_ls(&out, filter.to_string(), |a,b| a.borrow().name.cmp(&b.borrow().name)),
             Command::Ld(filter) => self.cmd_ls(&out, filter.to_string(), |a,b| b.borrow().date.cmp(&a.borrow().date)),
             Command::Add(name) => self.cmd_add(&out, &name),
+            Command::Leave(name) => self.cmd_leave(&out, &name),
             Command::Comment(name, comment) => self.cmd_comment(&out, &name, &comment),
             Command::Rm(name) => match self.get_password(name) {
                 Some(pwd) => {
