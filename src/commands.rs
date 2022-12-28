@@ -491,7 +491,7 @@ impl<'a> LKEval<'a> {
         encpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
         self.state.borrow_mut().ls.clear();
         let mut counter = 1;
-        out.o(format!("{:>3} {:>36} {:>4} {}", "", "Password", "Len", "Name"));
+        out.o(format!("{:>3} {:>36} {:>4}       {}", "", "Password", "Len", "Name"));
         for num in (encpwds.len() - min(genpwds.len(), num))..encpwds.len() {
             let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
             let key = Radix::new(counter, 36).unwrap().to_string();
