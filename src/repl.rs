@@ -193,7 +193,7 @@ mod tests {
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
             LKPrint::new(
-                LKOut::from_vecs(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], vec![]),
+                LKOut::from_vecs(vec!["  1       t1 R 99 2022-12-30 comment".to_string()], vec![]),
                 false,
                 lk.clone()
             )
@@ -222,7 +222,7 @@ mod tests {
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
             LKPrint::new(
                 LKOut::from_vecs(
-                    vec!["  1 t1 R 99 2022-12-30 comment".to_string(), "  2 t2 R 99 2022-12-31 bli blup".to_string()],
+                    vec!["  1       t1 R 99 2022-12-30 comment".to_string(), "  2       t2 R 99 2022-12-31 bli blup".to_string()],
                     vec![]
                 ),
                 false,
@@ -236,7 +236,7 @@ mod tests {
         assert_eq!(
             LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
             LKPrint::new(
-                LKOut::from_vecs(vec!["  1 t1 R 99 2022-12-30 comment".to_string()], vec![]),
+                LKOut::from_vecs(vec!["  1       t1 R 99 2022-12-30 comment".to_string()], vec![]),
                 false,
                 lk.clone()
             )

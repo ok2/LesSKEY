@@ -346,7 +346,7 @@ mod tests {
         create_init();
         create_pb();
 
-        let lkread = init();
+        let lkread = init().unwrap();
         assert_eq!(lkread.prompt, "test> ");
         assert_eq!(lkread.state.borrow().db.contains_key("t1"), true);
 
@@ -388,7 +388,7 @@ mod tests {
             .print();
         assert_eq!(
             std::fs::read_to_string("test_dump").expect("read"),
-            "add t1 R 99 2022-10-10\nadd t2 R 99 2022-10-10 test ^t1\nadd t3 R 99 2022-10-10 aoeu ^t2\n".to_string()
+            "add       t1 R 99 2022-10-10\nadd       t2 R 99 2022-10-10 test ^t1\nadd       t3 R 99 2022-10-10 aoeu ^t2\n".to_string()
         );
 
         let pr = LKEval::new(command_parser::cmd("enc t3").unwrap(), lkread.state.clone(), |v| {
