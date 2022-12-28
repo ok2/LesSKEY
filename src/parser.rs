@@ -9,13 +9,26 @@ use std::{cell::RefCell, rc::Rc};
 peg::parser! {
     pub grammar command_parser() for str {
         pub rule cmd() -> Command<'input> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) { c }
-        pub rule info_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(ls_cmd() / ld_cmd() / pb_cmd() / dump_cmd() / dump_def_cmd()) { c }
-        pub rule mod_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(add_cmd() / leave_cmd() / mv_cmd() / rm_cmd() / comment_cmd ()) { c }
-        pub rule asides_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(help_cmd() / source_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
-        pub rule enc_cmd_list() -> Command<'input> = (" " / "\t" / "\r" / "\n")* c:(enc_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
+        pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / dump_cmd() / dump_def_cmd()) { c }
+        pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / leave_cmd() / mv_cmd() / rm_cmd() / comment_cmd ()) { c }
+        pub rule asides_cmd_list() -> Command<'input> = space()* c:(help_cmd() / source_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
+        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
         pub rule script() -> Vec<Command<'input>> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) ++ "\n" { c }
 
-        rule _() -> &'input str = s:$((" " / "\t" / "\r")+) { s }
+        rule space() -> &'input str = s:$(
+              " "         // Space (U+0020)
+            / "\u{00A0}"  // Non-breaking space (U+00A0)
+            / "\u{2009}"  // Thin space (U+2009)
+            / "\u{2003}"  // Em space (U+2003)
+            / "\u{2002}"  // En space (U+2002)
+            / "\t"        // Tab (U+0009)
+            // / "\n"        // Line feed (U+000A)
+            / "\r"        // Carriage return (U+000D)
+            / "\u{000C}"  // Form feed (U+000C)
+            / "\u{200B}"  // Zero-width space (U+200B)
+            / "\u{3000}"  // Ideographic space (U+3000)
+        ) { s }
+        rule _() -> &'input str = s:$(space()+) { s }
         rule comment() -> String = _ c:$([' '..='~']+) { c.to_string() }
         rule word() -> String = n:$(['!'..='~']+) { n.to_string() }
         rule num() -> u32 = n:$(['0'..='9']+) {? n.parse().or(Err("not a number")) }
