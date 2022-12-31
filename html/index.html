@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      html,
+      body {
+        background-color: #000;
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: monospace;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      .terminal {
+        height: 100%;
+        width: 100%;
+        margin: 0 auto;
+        color: #fff;
+        overflow-y: scroll;
+        padding: 20px;
+      }
+
+      .prompt {
+        color: #0f0;
+      }
+
+      .form {
+        display: flex;
+        width: 100vw;
+        margin: 0 auto;
+      }
+
+      .input {
+        background-color: transparent;
+        border: none;
+        color: #fff;
+        outline: none;
+        flex-grow: 1;
+      }
+
+      .input::placeholder {
+        color: #666;
+      }
+
+      label {
+        width: 100%;
+        white-space: nowrap;
+        display: inline-flex;
+      }
+
+      .terminal p,
+      .prompt,
+      .input {
+        font-family: monospace;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      function Terminal() {
+        const [input, setInput] = React.useState("");
+        const [output, setOutput] = React.useState([]);
+        const outputRef = React.useRef(null);
+
+        React.useEffect(() => {
+          outputRef.current.scrollIntoView({ behaviour: "smooth" });
+        }, [output]);
+      
+        function handleInput(event) {
+          setInput(event.target.value);
+        }
+      
+        function handleSubmit(event) {
+          event.preventDefault();
+          const result = executeCommand(input);
+          setOutput([...output, { prompt: "❯", command: input }, { prompt: "", command: result }]);
+          setInput("");
+        }
+      
+        function executeCommand(command) {
+          switch (command) {
+            case "help":
+              return "Available commands: help, date, ls";
+            case "date":
+              return new Date().toString();
+            case "ls":
+              return "file1.txt file2.txt file3.txt";
+            default:
+              return "Command not found";
+          }
+        }
+      
+        return (
+          <div className="terminal">
+            {output.map(({ prompt, command }, index) => (
+              <p key={index}>{prompt && (<span className="prompt">&#x276f;&nbsp;</span>)}{command}</p>
+            ))}
+              <form onSubmit={handleSubmit}>
+                <label>
+                  <span className="prompt" ref={outputRef}>&#x276f;&nbsp;</span>
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={handleInput}
+                    className="input"
+                    autoFocus
+                  />
+                </label>
+              </form>
+          </div>
+        );
+      }
+  
+      const container = document.getElementById('root');
+      const root = ReactDOM.createRoot(container);
+      root.render(<Terminal />);
+    </script>
+  </body>
+</html>
