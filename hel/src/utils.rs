@@ -5,7 +5,6 @@ use std::io;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-#[cfg(not(wasm))]
 pub mod date {
     use chrono::naive::NaiveDate;
     use chrono::Local;
@@ -43,12 +42,34 @@ pub mod date {
     }
 }
 
-#[cfg(not(wasm))]
+#[cfg(target_arch = "wasm32")]
+pub mod rnd {
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_name = rnd_range)]
+        fn extern_rnd_range(start: u32, end: u32) -> u32;
+    }
+
+    pub fn range(start: u32, end: u32) -> u32 {
+        extern_rnd_range(start, end)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub mod rnd {
     use rand::{thread_rng, Rng};
 
     pub fn range(start: u32, end: u32) -> u32 {
         thread_rng().gen_range(start..end)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub mod home {
+    pub fn dir() -> std::path::PathBuf {
+        std::path::PathBuf::new()
     }
 }
 
@@ -110,6 +131,56 @@ pub mod editor {
 
     pub fn password(prompt: impl ToString) -> std::io::Result<String> {
         rpassword::prompt_password(prompt)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub mod editor {
+    use crate::structs::LKErr;
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_name = read_line)]
+        fn extern_readline(prompt: &str) -> String;
+
+        #[wasm_bindgen(js_name = read_password)]
+        fn extern_password(prompt: &str) -> String;
+    }
+
+    #[derive(Debug)]
+    pub struct Editor {
+        history: Vec<String>,
+    }
+
+    impl Editor {
+        pub fn new() -> Self {
+            Self { history: vec![] }
+        }
+
+        pub fn clear_history(&mut self) {
+            self.history.clear();
+        }
+
+        pub fn add_history_entry(&mut self, entry: &str) {
+            self.history.push(entry.to_string());
+        }
+
+        pub fn load_history<'a>(&mut self, _fname: &str) -> Result<(), LKErr<'a>> {
+            Ok(())
+        }
+
+        pub fn save_history<'a>(&mut self, _fname: &str) -> Result<(), LKErr<'a>> {
+            Ok(())
+        }
+
+        pub fn readline<'a>(&mut self, prompt: &str) -> Result<String, LKErr<'a>> {
+            Ok(extern_readline(&prompt))
+        }
+    }
+
+    pub fn password(prompt: String) -> std::io::Result<String> {
+        Ok(extern_password(&prompt))
     }
 }
 
