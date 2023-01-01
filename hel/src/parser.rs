@@ -2,8 +2,7 @@ extern crate peg;
 
 use crate::password::Password;
 use crate::structs::{Command, LKErr, Mode};
-use chrono::naive::NaiveDate;
-use chrono::Local;
+use crate::utils::date::Date;
 use std::{cell::RefCell, rc::Rc};
 
 peg::parser! {
@@ -42,21 +41,21 @@ peg::parser! {
         rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(None, pn, pl, pm, 99, pd, pc) }
         rule nname() -> Password = &(word() _ num()? mode()) pn:word() _ pl:num()? pm:mode()
-        { Password::new(None, pn, pl, pm, 99, Local::now().naive_local().date(), None) }
+        { Password::new(None, pn, pl, pm, 99, Date::now(), None) }
         rule qname() -> Password = &(word()) pn:word()
-        { Password::new(None, pn, None, Mode::NoSpaceCamel, 99, Local::now().naive_local().date(), None) }
+        { Password::new(None, pn, None, Mode::NoSpaceCamel, 99, Date::now(), None) }
         pub rule name() -> Password = name:(jname() / pname() / mname() / sname() / nname() / qname())? {?
             match name { Some(n) => Ok(n), None => Err("failed to parse password description") }
         }
 
-        rule ndate() -> NaiveDate = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
+        rule ndate() -> Date = y:$("-"? ['0'..='9']*<1,4>) "-" m:$(['0'..='9']*<1,2>) "-" d:$(['0'..='9']*<1,2>) {?
             let year:  i32 = match y.parse() { Ok(n) => n, Err(_) => return Err("year") };
             let month: u32 = match m.parse() { Ok(n) => n, Err(_) => return Err("month") };
             let day:   u32 = match d.parse() { Ok(n) => n, Err(_) => return Err("day") };
-            NaiveDate::from_ymd_opt(year, month, day).ok_or("date")
+            Date::try_new(year, month, day)
         }
-        rule cdate() -> NaiveDate = "now" { Local::now().naive_local().date() }
-        rule date() -> NaiveDate = d:(ndate() / cdate()) { d }
+        rule cdate() -> Date = "now" { Date::now() }
+        rule date() -> Date = d:(ndate() / cdate()) { d }
         rule umode() -> Mode = ("U" / "u") m:$("R" / "r" / "N" / "n" / "H" / "h" / "B" / "b") {?
             match m.to_uppercase().as_str() {
                 "R" => Ok(Mode::RegularUpcase),
@@ -126,7 +125,7 @@ add t3 C 99 2022-12-14"###
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Add(Rc::new(RefCell::new(Password {
@@ -136,7 +135,7 @@ add t3 C 99 2022-12-14"###
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Add(Rc::new(RefCell::new(Password {
@@ -146,7 +145,7 @@ add t3 C 99 2022-12-14"###
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 })))
             ])
@@ -166,7 +165,7 @@ add t3 C 99 2022-12-14
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Add(Rc::new(RefCell::new(Password {
@@ -176,7 +175,7 @@ add t3 C 99 2022-12-14
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Add(Rc::new(RefCell::new(Password {
@@ -186,7 +185,7 @@ add t3 C 99 2022-12-14
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Noop
@@ -208,7 +207,7 @@ add t3 C 99 2022-12-14
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Add(Rc::new(RefCell::new(Password {
@@ -218,7 +217,7 @@ add t3 C 99 2022-12-14
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Add(Rc::new(RefCell::new(Password {
@@ -228,7 +227,7 @@ add t3 C 99 2022-12-14
                     length: None,
                     mode: Mode::NoSpaceCamel,
                     seq: 99,
-                    date: NaiveDate::from_ymd_opt(2022, 12, 14).unwrap(),
+                    date: Date::new(2022, 12, 14),
                     comment: None
                 }))),
                 Command::Noop,
@@ -248,7 +247,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Regular,
                 length: None,
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string())
             })
         );
@@ -261,7 +260,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::RegularUpcase,
                 length: None,
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string())
             })
         );
@@ -274,7 +273,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::RegularUpcase,
                 length: None,
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: None
             })
         );
@@ -287,7 +286,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Regular,
                 length: None,
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string())
             })
         );
@@ -300,7 +299,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::NoSpace,
                 length: None,
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string())
             })
         );
@@ -313,7 +312,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::NoSpaceUpcase,
                 length: None,
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("xx.ableton@domain.info https://www.ableton.com".to_string())
             })
         );
@@ -326,7 +325,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Regular,
                 length: Some(20),
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -339,7 +338,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::RegularUpcase,
                 length: Some(20),
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -352,7 +351,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::HexUpcase,
                 length: Some(20),
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -365,7 +364,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Base64Upcase,
                 length: Some(20),
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -378,7 +377,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Decimal,
                 length: Some(20),
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -391,7 +390,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Decimal,
                 length: Some(20),
                 seq: 98,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -404,7 +403,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::NoSpaceCamel,
                 length: Some(20),
                 seq: 98,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );
@@ -417,7 +416,7 @@ add t3 C 99 2022-12-14
                 mode: Mode::Decimal,
                 length: Some(20),
                 seq: 99,
-                date: NaiveDate::from_ymd_opt(2020, 12, 09).unwrap(),
+                date: Date::new(2020, 12, 09),
                 comment: Some("a b c".to_string())
             })
         );

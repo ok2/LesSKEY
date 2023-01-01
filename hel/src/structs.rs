@@ -1,7 +1,5 @@
 use crate::password::{Comment, Name, PasswordRef};
-use home::home_dir;
 use rpassword::prompt_password;
-use rustyline::Editor;
 use std::fmt;
 use std::path::Path;
 use std::{cell::RefCell, rc::Rc};
@@ -9,12 +7,14 @@ use std::{cell::RefCell, rc::Rc};
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::repl::{LKEval, LKRead};
+use crate::utils::home;
+use crate::utils::editor::Editor;
 
 lazy_static! {
     pub static ref HISTORY_FILE: Box<Path> = {
         match std::env::var("HEL_HISTORY") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".hel_history").into_boxed_path(),
+            _ => home::dir().join(".hel_history").into_boxed_path(),
         }
     };
     pub static ref PROMPT_SETTING: String = {
@@ -26,19 +26,19 @@ lazy_static! {
     pub static ref INIT_FILE: Box<Path> = {
         match std::env::var("HEL_INIT") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".helrc").into_boxed_path(),
+            _ => home::dir().join(".helrc").into_boxed_path(),
         }
     };
     pub static ref CORRECT_FILE: Box<Path> = {
         match std::env::var("HEL_CORRECT") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".hel_correct").into_boxed_path(),
+            _ => home::dir().join(".hel_correct").into_boxed_path(),
         }
     };
     pub static ref DUMP_FILE: Box<Path> = {
         match std::env::var("HEL_DUMP") {
             Ok(v) => Path::new(shellexpand::full(&v).unwrap().into_owned().as_str()).to_path_buf().into_boxed_path(),
-            _ => home_dir().unwrap().join(".hel_dump").into_boxed_path(),
+            _ => home::dir().join(".hel_dump").into_boxed_path(),
         }
     };
 }
@@ -47,6 +47,8 @@ lazy_static! {
 pub enum LKErr<'a> {
     #[error("Error: {0}")]
     Error(&'a str),
+    #[error("Error: end of file")]
+    EOF,
     #[error("Failed to read the line: {0}")]
     ReadError(String),
     #[error("Failed to parse: {0}")]
@@ -288,7 +290,7 @@ pub fn init() -> Option<LKRead> {
             .print();
         }
     }
-    Some(LKRead::new(Editor::<()>::new().unwrap(), PROMPT_SETTING.to_string(), lk.clone()))
+    Some(LKRead::new(Editor::new(), PROMPT_SETTING.to_string(), lk.clone()))
 }
 
 #[cfg(test)]

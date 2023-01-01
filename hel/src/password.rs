@@ -1,6 +1,6 @@
 use crate::skey::SKey;
 use crate::structs::Mode;
-use chrono::naive::NaiveDate;
+use crate::utils::date::Date;
 use std::{cell::RefCell, rc::Rc};
 
 pub type Name = String;
@@ -10,7 +10,6 @@ pub type PasswordRef = Rc<RefCell<Password>>;
 pub type Parent = Option<PasswordRef>;
 pub type Length = Option<u32>;
 pub type Seq = u32;
-pub type Date = NaiveDate;
 
 #[derive(PartialEq, Debug)]
 pub struct Password {
@@ -173,7 +172,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            Date::new(2022, 12, 3),
             None,
         )));
 
@@ -187,7 +186,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            Date::new(2022, 12, 3),
             None,
         )));
         p2.borrow_mut().parent = Some(p1.clone());
@@ -197,7 +196,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            Date::new(2022, 12, 3),
             None,
         )));
         p3.borrow_mut().parent = Some(p2.clone());
@@ -207,7 +206,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            Date::new(2022, 12, 3),
             None,
         )));
         p4.borrow_mut().parent = Some(p3.clone());
@@ -217,7 +216,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 3).unwrap(),
+            Date::new(2022, 12, 3),
             None,
         )));
         p5.borrow_mut().parent = Some(p4.clone());
@@ -230,7 +229,7 @@ mod tests {
     #[test]
     fn exec_encode_test() {
         let sec = "my secret";
-        let dat = NaiveDate::from_ymd_opt(2022, 12, 3).unwrap();
+        let dat = Date::new(2022, 12, 3);
 
         let mut pwd = Password::new(None, "test1".to_string(), None, Mode::Regular, 99, dat, None);
         assert_eq!(pwd.encode(sec), "ross beau week held yoga anti");

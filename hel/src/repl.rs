@@ -1,15 +1,14 @@
 use rpassword::prompt_password;
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::structs::{Command, LKErr, LKOut, HISTORY_FILE};
+use crate::utils::editor::Editor;
 
 #[derive(Debug)]
 pub struct LKRead {
-    pub rl: Editor<()>,
+    pub rl: Editor,
     pub prompt: String,
     pub state: Rc<RefCell<LK>>,
     pub cmd: String,
@@ -31,7 +30,7 @@ pub struct LKPrint {
 }
 
 impl LKRead {
-    pub fn new(rl: Editor<()>, prompt: String, state: Rc<RefCell<LK>>) -> Self {
+    pub fn new(rl: Editor, prompt: String, state: Rc<RefCell<LK>>) -> Self {
         Self {
             rl,
             prompt,
@@ -53,7 +52,7 @@ impl LKRead {
         }
         self.cmd = match self.rl.readline(&*self.prompt) {
             Ok(str) => str,
-            Err(ReadlineError::Eof | ReadlineError::Interrupted) => "quit".to_string(),
+            Err(LKErr::EOF) => "quit".to_string(),
             Err(err) => {
                 return LKEval::new(
                     Command::Error(LKErr::ReadError(err.to_string())),
@@ -128,6 +127,7 @@ impl<'a> LKEval<'a> {
             Command::Error(error) => match error {
                 LKErr::ParseError(e) => out.e(e.to_string()),
                 LKErr::ReadError(e) => out.e(e.to_string()),
+                LKErr::EOF => out.e("error: end of file".to_string()),
                 LKErr::Error(e) => out.e(format!("error: {}", e.to_string())),
             },
         }

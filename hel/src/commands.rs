@@ -1,4 +1,3 @@
-use rand::{thread_rng, Rng};
 use regex::Regex;
 use rpassword::prompt_password;
 use sha1::{Digest, Sha1};
@@ -13,7 +12,7 @@ use crate::password::fix_password_recursion;
 use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
 use crate::structs::{LKOut, Radix, CORRECT_FILE, DUMP_FILE};
-use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env};
+use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
 
 impl<'a> LKEval<'a> {
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
@@ -429,7 +428,6 @@ impl<'a> LKEval<'a> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^.+?(G+|X+)$").unwrap();
         }
-        let mut rng = thread_rng();
         let num: usize = (*num).try_into().unwrap();
         let pwd = name.borrow();
         let mut genpwds: Vec<PasswordRef> = Vec::new();
@@ -445,7 +443,7 @@ impl<'a> LKEval<'a> {
                     }
                 } else {
                     let name = pwd.name.trim_end_matches('X');
-                    let num = rng.gen_range(1..10_u32.pow(gen.len().try_into().unwrap()));
+                    let num = rnd::range(1, 10_u32.pow(gen.len().try_into().unwrap()));
                     let npwd = Password::from_password(&pwd);
                     npwd.borrow_mut().name = format!("{}{}", name, num).to_string();
                     genpwds.push(npwd);
