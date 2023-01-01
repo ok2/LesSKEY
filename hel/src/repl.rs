@@ -1,10 +1,9 @@
-use rpassword::prompt_password;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::structs::{Command, LKErr, LKOut, HISTORY_FILE};
-use crate::utils::editor::Editor;
+use crate::utils::editor::{ Editor, password };
 
 #[derive(Debug)]
 pub struct LKRead {
@@ -36,7 +35,7 @@ impl LKRead {
             prompt,
             state,
             cmd: "".to_string(),
-            read_password: prompt_password,
+            read_password: password,
         }
     }
 
@@ -153,8 +152,8 @@ mod tests {
     use super::*;
     use crate::password::Password;
     use crate::structs::Mode;
-    use chrono::naive::NaiveDate;
     use std::collections::HashMap;
+    use crate::utils::date::Date;
 
     impl<'a> LKEval<'a> {
         pub fn news(cmd: Command<'a>, state: Rc<RefCell<LK>>) -> Self {
@@ -181,7 +180,7 @@ mod tests {
             length: None,
             mode: Mode::Regular,
             seq: 99,
-            date: NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            date: Date::new(2022, 12, 30),
             comment: Some("comment".to_string()),
             parent: None,
         }));
@@ -208,7 +207,7 @@ mod tests {
             length: None,
             mode: Mode::Regular,
             seq: 99,
-            date: NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+            date: Date::new(2022, 12, 31),
             comment: Some("bli blup".to_string()),
             parent: None,
         }));
@@ -252,7 +251,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            Date::new(2022, 12, 30),
             None,
         )));
         let t2 = Rc::new(RefCell::new(Password::new(
@@ -261,7 +260,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            Date::new(2022, 12, 30),
             None,
         )));
         let t3 = Rc::new(RefCell::new(Password::new(
@@ -270,7 +269,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 12, 30).unwrap(),
+            Date::new(2022, 12, 30),
             None,
         )));
         assert_eq!(

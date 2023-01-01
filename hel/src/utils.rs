@@ -10,7 +10,7 @@ pub mod date {
     use chrono::naive::NaiveDate;
     use chrono::Local;
 
-    #[derive(PartialEq, Debug, Clone)]
+    #[derive(PartialEq, Debug, Clone, Copy)]
     pub struct Date {
         date: NaiveDate
     }
@@ -106,6 +106,10 @@ pub mod editor {
                 Err(_) => Err(LKErr::Error("failed to read from input")),
             }
         }
+    }
+
+    pub fn password(prompt: impl ToString) -> std::io::Result<String> {
+        rpassword::prompt_password(prompt)
     }
 }
 

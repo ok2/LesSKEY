@@ -1,5 +1,4 @@
 use crate::password::{Comment, Name, PasswordRef};
-use rpassword::prompt_password;
 use std::fmt;
 use std::path::Path;
 use std::{cell::RefCell, rc::Rc};
@@ -8,7 +7,7 @@ use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::repl::{LKEval, LKRead};
 use crate::utils::home;
-use crate::utils::editor::Editor;
+use crate::utils::editor::{ Editor, password };
 
 lazy_static! {
     pub static ref HISTORY_FILE: Box<Path> = {
@@ -270,11 +269,11 @@ pub fn init() -> Option<LKRead> {
         Ok(script) => match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    if !LKEval::new(cmd, lk.clone(), prompt_password).eval().print() { return None; }
+                    if !LKEval::new(cmd, lk.clone(), password).eval().print() { return None; }
                 }
             }
             Err(err) => {
-                LKEval::new(Command::Error(LKErr::ParseError(err)), lk.clone(), prompt_password).eval().print();
+                LKEval::new(Command::Error(LKErr::ParseError(err)), lk.clone(), password).eval().print();
             }
         },
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => (),
@@ -284,7 +283,7 @@ pub fn init() -> Option<LKRead> {
                     format!("Failed to read init file {:?}: {}", INIT_FILE.to_str(), err).as_str(),
                 )),
                 lk.clone(),
-                prompt_password,
+                password,
             )
             .eval()
             .print();
@@ -297,7 +296,7 @@ pub fn init() -> Option<LKRead> {
 mod tests {
     use super::*;
     use crate::password::Password;
-    use chrono::naive::NaiveDate;
+    use crate::utils::date::Date;
     use std::io::{BufWriter, Write};
     use std::os::unix::fs::PermissionsExt;
 
@@ -358,7 +357,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 10, 10).unwrap(),
+            Date::new(2022, 10, 10),
             None,
         )));
         let t2 = Rc::new(RefCell::new(Password::new(
@@ -367,7 +366,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 10, 10).unwrap(),
+            Date::new(2022, 10, 10),
             Some("test".to_string()),
         )));
         t2.borrow_mut().parent = Some(t1.clone());
@@ -377,7 +376,7 @@ mod tests {
             None,
             Mode::Regular,
             99,
-            NaiveDate::from_ymd_opt(2022, 10, 10).unwrap(),
+            Date::new(2022, 10, 10),
             Some("aoeu".to_string()),
         )));
         t3.borrow_mut().parent = Some(t2.clone());
@@ -385,7 +384,7 @@ mod tests {
         assert_eq!(*lkread.state.borrow().db.get("t2").unwrap().borrow(), *t2.borrow());
         assert_eq!(*lkread.state.borrow().db.get("t3").unwrap().borrow(), *t3.borrow());
 
-        LKEval::new(command_parser::cmd("dump").unwrap(), lkread.state.clone(), prompt_password)
+        LKEval::new(command_parser::cmd("dump").unwrap(), lkread.state.clone(), password)
             .eval()
             .print();
         assert_eq!(

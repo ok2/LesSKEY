@@ -1,5 +1,4 @@
 use regex::Regex;
-use rpassword::prompt_password;
 use sha1::{Digest, Sha1};
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
@@ -13,6 +12,7 @@ use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
 use crate::structs::{LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
+use crate::utils::editor::password;
 
 impl<'a> LKEval<'a> {
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
@@ -251,7 +251,7 @@ impl<'a> LKEval<'a> {
         match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    let print = LKEval::new(cmd, self.state.clone(), prompt_password).eval();
+                    let print = LKEval::new(cmd, self.state.clone(), password).eval();
                     print.out.copy(&out);
                     if print.quit { return true; }
                 }
