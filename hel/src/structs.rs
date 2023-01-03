@@ -60,7 +60,7 @@ pub enum LKErr<'a> {
 #[derive(Debug)]
 pub enum Command<'a> {
     Add(PasswordRef),
-    Leave(Name),
+    Keep(Name),
     Ls(String),
     Ld(String),
     Mv(Name, Name),

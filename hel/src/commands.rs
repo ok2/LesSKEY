@@ -104,7 +104,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn cmd_leave(&self, out: &LKOut, name: &Name) {
+    pub fn cmd_keep(&self, out: &LKOut, name: &Name) {
         let pwd = match self.state.lock().borrow().ls.get(name) {
             Some(pwd) => pwd.clone(),
             None => {
