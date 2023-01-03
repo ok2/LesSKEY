@@ -8,7 +8,7 @@ use std::{cell::RefCell, rc::Rc};
 peg::parser! {
     pub grammar command_parser() for str {
         pub rule cmd() -> Command<'input> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) { c }
-        pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / dump_cmd() / dump_def_cmd()) { c }
+        pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / save_cmd() / save_def_cmd() / dump_cmd()) { c }
         pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / leave_cmd() / mv_cmd() / rm_cmd() / comment_cmd ()) { c }
         pub rule asides_cmd_list() -> Command<'input> = space()* c:(help_cmd() / source_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
         pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
@@ -83,8 +83,9 @@ peg::parser! {
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
         rule pb_cmd() -> Command<'input> = "pb" _ e:$(([' '..='~'])+) { Command::PasteBuffer(e.to_string()) }
-        rule dump_cmd() -> Command<'input> = "dump" _ s:$(([' '..='~'])+) { Command::Dump(Some(s.to_string())) }
-        rule dump_def_cmd() -> Command<'input> = "dump" { Command::Dump(None) }
+        rule save_cmd() -> Command<'input> = "save" _ s:$(([' '..='~'])+) { Command::Dump(Some(s.to_string())) }
+        rule save_def_cmd() -> Command<'input> = "save" { Command::Dump(None) }
+        rule dump_cmd() -> Command<'input> = "dump" { Command::Dump(Some("-".to_string())) }
         rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule ld_cmd() -> Command<'input> = "ld" f:comment()? { Command::Ld(f.unwrap_or(".".to_string())) }

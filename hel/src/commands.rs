@@ -303,14 +303,20 @@ impl<'a> LKEval<'a> {
                 }
             };
             if output.len() > 0 {
-                out.e(format!("Passwords dumped to command {} and got following output:", cmd));
+                out.e(format!("Passwords saved to command {} and got following output:", cmd));
                 out.o(output);
             } else {
-                out.o(format!("Passwords dumped to command {}", cmd));
+                out.o(format!("Passwords saved to command {}", cmd));
             }
+        } else if script.trim() == "-" {
+            let mut vals = (&self.state.borrow().db).values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
+            vals.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
+            for pwd in vals {
+                out.o(format!("add {}", pwd.borrow().to_string()))
+            };
         } else {
             match save_dump(&self.state.borrow().db, &script) {
-                Ok(()) => out.o(format!("Passwords dumped to {}", script)),
+                Ok(()) => out.o(format!("Passwords saved to file {}", script)),
                 Err(e) => out.e(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
             };
         }

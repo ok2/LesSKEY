@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(*lkread.state.borrow().db.get("t2").unwrap().borrow(), *t2.borrow());
         assert_eq!(*lkread.state.borrow().db.get("t3").unwrap().borrow(), *t3.borrow());
 
-        LKEval::new(command_parser::cmd("dump").unwrap(), lkread.state.clone(), password)
+        LKEval::new(command_parser::cmd("save").unwrap(), lkread.state.clone(), password)
             .eval()
             .print();
         assert_eq!(
