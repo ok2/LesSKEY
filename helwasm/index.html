@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <script type="module" src="./pkg/helwasm.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -75,6 +76,18 @@
   </head>
   <body>
     <div id="root"></div>
+    <script type="text/javascript">
+      function read_line(prompt) {
+        console.log("called read_line: " + prompt);
+        return "line";
+      }
+
+      function read_password(prompt) {
+        console.log("called read_password: " + prompt);
+        return "password";
+      }
+
+    </script>
     <script type="text/babel">
       function Terminal() {
         const [input, setInput] = React.useState("");
@@ -101,7 +114,7 @@
             case "help":
               return "Available commands: help, date, ls";
             case "date":
-              return new Date().toString();
+              return hel.ok_add(1, 2).toString();
             case "ls":
               return "file1.txt file2.txt file3.txt";
             default:
