@@ -75,7 +75,7 @@ impl<'a> LKEval<'a> {
                         Some(master) => {
                             let password = pn.borrow().encode(master.as_str());
                             let name = pn.borrow().name.to_string();
-                            self.cmd_correct(&out, &name, true, Some(master));
+                            self.cmd_correct(&out, &name, true, Some(password.to_string()));
                             self.state.borrow_mut().secrets.insert(name, password.clone());
                             Some(password)
                         }
@@ -145,7 +145,7 @@ impl<'a> LKEval<'a> {
                     self.state
                         .borrow_mut()
                         .secrets
-                        .insert("/".to_string(), (self.read_password)("Master: ".to_string()).unwrap());
+                        .insert("/".to_string(), pwd);
                 } else {
                     out.e(format!("error: password with name {} not found", name));
                 }
@@ -391,7 +391,7 @@ impl<'a> LKEval<'a> {
         };
         let mut sha1 = Sha1::new();
         sha1.update(name.to_string());
-        sha1.update(pwd);
+        sha1.update(&pwd);
         let encpwd = format!("{:x}", sha1.finalize());
         if check {
             if data.contains(&encpwd) {
