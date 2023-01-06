@@ -162,6 +162,7 @@ impl PartialEq for LKPrint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use crate::lk::LK;
     use crate::password::Password;
     use crate::structs::Mode;
@@ -209,13 +210,13 @@ mod tests {
                 .db
                 .iter()
                 .map(|x| (x.0.to_string(), x.1.lock().borrow().to_string()))
-                .collect::<Vec<(String, String)>>(),
+                .collect::<HashSet<(String, String)>>(),
             {
                 let mut db = HashMap::new();
                 db.insert(pwd1.lock().borrow().name.to_string(), pwd1.clone());
                 db.into_iter()
                     .map(|x| (x.0.to_string(), x.1.lock().borrow().to_string()))
-                    .collect::<Vec<(String, String)>>()
+                    .collect::<HashSet<(String, String)>>()
             }
         );
         assert_eq!(
@@ -249,12 +250,12 @@ mod tests {
                 .db
                 .iter()
                 .map(|x| (x.0.to_string(), x.1.lock().borrow().to_string()))
-                .collect::<Vec<(String, String)>>(),
+                .collect::<HashSet<(String, String)>>(),
             {
                 let mut db = HashMap::new();
                 db.insert(pwd1.lock().borrow().name.to_string(), pwd1.clone());
                 db.insert(pwd2.lock().borrow().name.to_string(), pwd2.clone());
-                db.into_iter().map(|x| (x.0, x.1.lock().borrow().to_string())).collect::<Vec<(String, String)>>()
+                db.into_iter().map(|x| (x.0, x.1.lock().borrow().to_string())).collect::<HashSet<(String, String)>>()
             }
         );
         assert_eq!(

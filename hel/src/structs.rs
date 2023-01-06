@@ -85,7 +85,7 @@ impl<'a> PartialEq for Command<'a> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Command::Add(s), Command::Add(o)) => *s.lock() == *o.lock(),
-            (Command::Leave(s), Command::Leave(o)) => s == o,
+            (Command::Keep(s), Command::Keep(o)) => s == o,
             (Command::Ls(s), Command::Ls(o)) => s == o,
             (Command::Ld(s), Command::Ld(o)) => s == o,
             (Command::Mv(a, b), Command::Mv(x, y)) => a == x && b == y,
