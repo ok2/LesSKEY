@@ -70,6 +70,7 @@
       .input {
         font-family: monospace;
         font-size: 16px;
+        white-space: pre;
       }
     </style>
   </head>
@@ -117,16 +118,7 @@
         }
       
         function executeCommand(command) {
-          switch (command) {
-            case "help":
-              return "Available commands: help, date, ls";
-            case "date":
-              return hel.ok_add(1, 2).toString();
-            case "ls":
-              return "file1.txt file2.txt file3.txt";
-            default:
-              return "Command not found";
-          }
+      return window.hel.hel_command(command);
         }
       
         return (
