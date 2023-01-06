@@ -10,6 +10,7 @@ lazy_static! {
     static ref STATE: LKRef = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
 }
 
+#[allow(dead_code)]
 #[wasm_bindgen]
 pub fn hel_command(cmd: String) -> String {
     let editor = Editor::new();
