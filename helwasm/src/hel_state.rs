@@ -14,7 +14,7 @@ lazy_static! {
 pub fn hel_command(cmd: String) -> String {
     let editor = Editor::new();
     let mut lkread = LKRead::new(editor, "> ".to_string(), STATE.clone());
-    lkread.cmd = cmd.to_string();
+    lkread.input = Some(cmd.to_string());
     let lkeval = lkread.read();
     let lkprint = lkeval.eval();
     lkprint.out.output().join("\n")

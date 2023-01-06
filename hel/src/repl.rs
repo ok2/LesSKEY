@@ -9,6 +9,7 @@ pub struct LKRead {
     pub prompt: String,
     pub state: LKRef,
     pub cmd: String,
+    pub input: Option<String>,
     pub read_password: fn(String) -> std::io::Result<String>,
 }
 
@@ -33,6 +34,7 @@ impl LKRead {
             prompt,
             state,
             cmd: "".to_string(),
+            input: None,
             read_password: password,
         }
     }
@@ -47,8 +49,9 @@ impl LKRead {
                 ()
             }
         }
-        if self.cmd != "" {
-            self.cmd = match self.rl.readline(&*self.prompt) {
+        self.cmd = match &self.input {
+            Some(cmd) => cmd.to_string(),
+            None => match self.rl.readline(&*self.prompt) {
                 Ok(str) => str,
                 Err(LKErr::EOF) => "quit".to_string(),
                 Err(err) => {
@@ -58,15 +61,14 @@ impl LKRead {
                         self.read_password,
                     )
                 }
-            };
-        }
+            }
+        };
         self.rl.add_history_entry(self.cmd.as_str());
-        self.cmd = "".to_string();
         match self.rl.save_history(&history_file) {
             Ok(_) => (),
             Err(_) => (),
         }
-        match command_parser::cmd(self.cmd.as_str()) {
+        match command_parser::cmd(&self.cmd) {
             Ok(cmd) => LKEval::new(cmd, self.state.clone(), self.read_password),
             Err(err) => LKEval::new(Command::Error(LKErr::ParseError(err)), self.state.clone(), self.read_password),
         }
