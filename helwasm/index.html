@@ -76,8 +76,6 @@
   <body>
     <div id="root"></div>
     <script type="module">
-      import init, { ok_add } from "./pkg/helwasm.js";
-
       function read_line(prompt) {
         console.log("called read_line: " + prompt);
         return "line";
@@ -88,9 +86,12 @@
         return "password";
       }
 
+      import init, { ok_add, hel_init, hel_command } from "./pkg/helwasm.js";
       init().then(() => {
         window.hel = {
           ok_add: ok_add,
+          hel_init: hel_init,
+          hel_command: hel_command,
         }
       });
     </script>

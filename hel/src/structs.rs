@@ -228,6 +228,19 @@ impl LKOut {
         }
     }
 
+    pub fn output(&self) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
+        match &self.err {
+            Some(o) => for l in &*o.lock() { out.push(l.to_string()); },
+            _ => (),
+        }
+        match &self.out {
+            Some(o) => for l in &*o.lock() { out.push(l.to_string()); },
+            _ => (),
+        }
+        out
+    }
+
     pub fn active(&self) -> bool {
         self.out.is_some()
     }

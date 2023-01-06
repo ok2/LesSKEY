@@ -47,18 +47,21 @@ impl LKRead {
                 ()
             }
         }
-        self.cmd = match self.rl.readline(&*self.prompt) {
-            Ok(str) => str,
-            Err(LKErr::EOF) => "quit".to_string(),
-            Err(err) => {
-                return LKEval::new(
-                    Command::Error(LKErr::ReadError(err.to_string())),
-                    self.state.clone(),
-                    self.read_password,
-                )
-            }
-        };
+        if self.cmd != "" {
+            self.cmd = match self.rl.readline(&*self.prompt) {
+                Ok(str) => str,
+                Err(LKErr::EOF) => "quit".to_string(),
+                Err(err) => {
+                    return LKEval::new(
+                        Command::Error(LKErr::ReadError(err.to_string())),
+                        self.state.clone(),
+                        self.read_password,
+                    )
+                }
+            };
+        }
         self.rl.add_history_entry(self.cmd.as_str());
+        self.cmd = "".to_string();
         match self.rl.save_history(&history_file) {
             Ok(_) => (),
             Err(_) => (),
