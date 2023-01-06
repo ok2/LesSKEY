@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <script type="module" src="./pkg/helwasm.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -76,7 +75,9 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="text/javascript">
+    <script type="module">
+      import init, { ok_add } from "./pkg/helwasm.js";
+
       function read_line(prompt) {
         console.log("called read_line: " + prompt);
         return "line";
@@ -87,6 +88,11 @@
         return "password";
       }
 
+      init().then(() => {
+        window.hel = {
+          ok_add: ok_add,
+        }
+      });
     </script>
     <script type="text/babel">
       function Terminal() {

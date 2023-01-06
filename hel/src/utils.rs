@@ -11,12 +11,14 @@ pub mod date {
 
     #[derive(PartialEq, Debug, Clone, Copy)]
     pub struct Date {
-        date: NaiveDate
+        date: NaiveDate,
     }
 
     impl Date {
         pub fn new(year: i32, month: u32, day: u32) -> Self {
-            Self { date: NaiveDate::from_ymd_opt(year, month, day).unwrap() }
+            Self {
+                date: NaiveDate::from_ymd_opt(year, month, day).unwrap(),
+            }
         }
 
         pub fn try_new(year: i32, month: u32, day: u32) -> Result<Self, &'static str> {
@@ -27,7 +29,9 @@ pub mod date {
         }
 
         pub fn now() -> Self {
-            Self { date: Local::now().naive_local().date() }
+            Self {
+                date: Local::now().naive_local().date(),
+            }
         }
 
         pub fn cmp(&self, other: &Self) -> core::cmp::Ordering {
@@ -95,7 +99,9 @@ pub mod editor {
 
     impl Editor {
         pub fn new() -> Self {
-            Self { editor: rustyline::Editor::<()>::new().unwrap() }
+            Self {
+                editor: rustyline::Editor::<()>::new().unwrap(),
+            }
         }
 
         pub fn clear_history(&mut self) {

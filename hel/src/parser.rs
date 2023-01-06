@@ -3,7 +3,6 @@ extern crate peg;
 use crate::password::Password;
 use crate::structs::{Command, LKErr, Mode};
 use crate::utils::date::Date;
-use std::{cell::RefCell, rc::Rc};
 
 peg::parser! {
     pub grammar command_parser() for str {
@@ -89,10 +88,10 @@ peg::parser! {
         rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule ld_cmd() -> Command<'input> = "ld" f:comment()? { Command::Ld(f.unwrap_or(".".to_string())) }
-        rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Rc::new(RefCell::new(name))) }
+        rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Password::from_password(name)) }
         rule leave_cmd() -> Command<'input> = "leave" _ name:word() { Command::Leave(name.to_string()) }
         rule gen_cmd() -> Command<'input> = "gen" n:num()? _ name:name() {
-            Command::Gen(match n { Some(n) => n, None => 10_u32 }, Rc::new(RefCell::new(name)))
+            Command::Gen(match n { Some(n) => n, None => 10_u32 }, Password::from_password(name))
         }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
@@ -119,7 +118,7 @@ add t2 C 99 2022-12-14
 add t3 C 99 2022-12-14"###
             ),
             Ok(vec![
-                Command::Add(Rc::new(RefCell::new(Password {
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t1".to_string(),
@@ -128,8 +127,8 @@ add t3 C 99 2022-12-14"###
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
-                Command::Add(Rc::new(RefCell::new(Password {
+                })),
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t2".to_string(),
@@ -138,8 +137,8 @@ add t3 C 99 2022-12-14"###
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
-                Command::Add(Rc::new(RefCell::new(Password {
+                })),
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t3".to_string(),
@@ -148,7 +147,7 @@ add t3 C 99 2022-12-14"###
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                })))
+                }))
             ])
         );
         assert_eq!(
@@ -159,7 +158,7 @@ add t3 C 99 2022-12-14
 "###
             ),
             Ok(vec![
-                Command::Add(Rc::new(RefCell::new(Password {
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t1".to_string(),
@@ -168,8 +167,8 @@ add t3 C 99 2022-12-14
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
-                Command::Add(Rc::new(RefCell::new(Password {
+                })),
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t2".to_string(),
@@ -178,8 +177,8 @@ add t3 C 99 2022-12-14
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
-                Command::Add(Rc::new(RefCell::new(Password {
+                })),
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t3".to_string(),
@@ -188,7 +187,7 @@ add t3 C 99 2022-12-14
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
+                })),
                 Command::Noop
             ])
         );
@@ -201,7 +200,7 @@ add t3 C 99 2022-12-14
 "###
             ),
             Ok(vec![
-                Command::Add(Rc::new(RefCell::new(Password {
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t1".to_string(),
@@ -210,8 +209,8 @@ add t3 C 99 2022-12-14
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
-                Command::Add(Rc::new(RefCell::new(Password {
+                })),
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t2".to_string(),
@@ -220,8 +219,8 @@ add t3 C 99 2022-12-14
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
-                Command::Add(Rc::new(RefCell::new(Password {
+                })),
+                Command::Add(Password::from_password(Password {
                     parent: None,
                     prefix: None,
                     name: "t3".to_string(),
@@ -230,7 +229,7 @@ add t3 C 99 2022-12-14
                     seq: 99,
                     date: Date::new(2022, 12, 14),
                     comment: None
-                }))),
+                })),
                 Command::Noop,
                 Command::Noop
             ])

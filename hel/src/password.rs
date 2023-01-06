@@ -1,17 +1,19 @@
 use crate::skey::SKey;
 use crate::structs::Mode;
 use crate::utils::date::Date;
-use std::{cell::RefCell, rc::Rc};
+use parking_lot::ReentrantMutex;
+use std::cell::RefCell;
+use std::sync::Arc;
 
 pub type Name = String;
 pub type Prefix = Option<String>;
 pub type Comment = Option<String>;
-pub type PasswordRef = Rc<RefCell<Password>>;
+pub type PasswordRef = Arc<ReentrantMutex<RefCell<Password>>>;
 pub type Parent = Option<PasswordRef>;
 pub type Length = Option<u32>;
 pub type Seq = u32;
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug)]
 pub struct Password {
     pub parent: Parent,
     pub prefix: Prefix,
@@ -45,8 +47,8 @@ impl Password {
         }
     }
 
-    pub fn from_password(password: &Password) -> PasswordRef {
-        Rc::new(RefCell::new(Self {
+    pub fn from_password_ref(password: &Password) -> PasswordRef {
+        Arc::new(ReentrantMutex::new(RefCell::new(Self {
             parent: password.parent.clone(),
             prefix: password.prefix.clone(),
             name: password.name.clone(),
@@ -55,7 +57,11 @@ impl Password {
             seq: password.seq,
             date: password.date.clone(),
             comment: password.comment.clone(),
-        }))
+        })))
+    }
+
+    pub fn from_password(password: Password) -> PasswordRef {
+        Arc::new(ReentrantMutex::new(RefCell::new(password)))
     }
 
     pub fn encode(&self, secret: &str) -> String {
@@ -109,10 +115,25 @@ impl std::string::ToString for Password {
             None => "".to_string(),
         };
         let parent = match &self.parent {
-            Some(s) => format!(" ^{}", s.borrow().name),
+            Some(s) => format!(" ^{}", s.lock().borrow().name),
             None => "".to_string(),
         };
         format!("{:>6}{} {}{} {} {}{}{}", prefix, self.name, length, self.mode, self.seq, self.date, comment, parent)
+    }
+}
+
+impl PartialEq for Password {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && match (&self.parent, &other.parent) {
+                (Some(s), Some(o)) => *s.lock() == *o.lock(),
+                (None, None) => true,
+                _ => false,
+            }
+            && self.prefix == other.prefix
+            && self.length == other.length
+            && self.mode == other.mode
+            && self.seq == other.seq
     }
 }
 
@@ -128,34 +149,34 @@ fn camel_case(words: [&str; 6]) -> String {
     camel_case_string
 }
 
-pub fn fix_password_recursion(entry: Rc<RefCell<Password>>) {
+pub fn fix_password_recursion(entry: PasswordRef) {
     let mut t1 = entry.clone();
     let mut t2 = entry;
-    let mut t3: Option<Rc<RefCell<Password>>> = None;
+    let mut t3: Option<PasswordRef> = None;
     loop {
-        t2 = match &t2.clone().borrow().parent {
+        t2 = match &t2.clone().lock().borrow().parent {
             Some(o) => o.clone(),
             None => break,
         };
-        if std::ptr::eq(&*t1.borrow(), &*t2.borrow()) {
+        if std::ptr::eq(&*t1.lock().borrow(), &*t2.lock().borrow()) {
             t3 = Some(t2.clone());
             break;
         }
-        t1 = match &t1.clone().borrow().parent {
+        t1 = match &t1.clone().lock().borrow().parent {
             Some(o) => o.clone(),
             None => break,
         };
-        t2 = match &t2.clone().borrow().parent {
+        t2 = match &t2.clone().lock().borrow().parent {
             Some(o) => o.clone(),
             None => break,
         };
-        if std::ptr::eq(&*t1.borrow(), &*t2.borrow()) {
+        if std::ptr::eq(&*t1.lock().borrow(), &*t2.lock().borrow()) {
             t3 = Some(t2.clone());
             break;
         }
     }
     match t3 {
-        Some(o) => o.borrow_mut().parent = None,
+        Some(o) => o.lock().borrow_mut().parent = None,
         None => (),
     }
 }
@@ -166,7 +187,7 @@ mod tests {
 
     #[test]
     fn exec_recursion_test() {
-        let p1 = Rc::new(RefCell::new(Password::new(
+        let p1 = Password::from_password(Password::new(
             None,
             "p1".to_string(),
             None,
@@ -174,13 +195,15 @@ mod tests {
             99,
             Date::new(2022, 12, 3),
             None,
-        )));
+        ));
 
-        p1.borrow_mut().parent = Some(p1.clone());
+        {
+            p1.lock().borrow_mut().parent = Some(p1.clone());
+        };
         fix_password_recursion(p1.clone());
-        assert_eq!(p1.borrow().parent, None);
+        assert_eq!(p1.lock().borrow().parent.is_none(), true);
 
-        let p2 = Rc::new(RefCell::new(Password::new(
+        let p2 = Password::from_password(Password::new(
             None,
             "p2".to_string(),
             None,
@@ -188,9 +211,9 @@ mod tests {
             99,
             Date::new(2022, 12, 3),
             None,
-        )));
-        p2.borrow_mut().parent = Some(p1.clone());
-        let p3 = Rc::new(RefCell::new(Password::new(
+        ));
+        p2.lock().borrow_mut().parent = Some(p1.clone());
+        let p3 = Password::from_password(Password::new(
             None,
             "p3".to_string(),
             None,
@@ -198,9 +221,9 @@ mod tests {
             99,
             Date::new(2022, 12, 3),
             None,
-        )));
-        p3.borrow_mut().parent = Some(p2.clone());
-        let p4 = Rc::new(RefCell::new(Password::new(
+        ));
+        p3.lock().borrow_mut().parent = Some(p2.clone());
+        let p4 = Password::from_password(Password::new(
             None,
             "p4".to_string(),
             None,
@@ -208,9 +231,9 @@ mod tests {
             99,
             Date::new(2022, 12, 3),
             None,
-        )));
-        p4.borrow_mut().parent = Some(p3.clone());
-        let p5 = Rc::new(RefCell::new(Password::new(
+        ));
+        p4.lock().borrow_mut().parent = Some(p3.clone());
+        let p5 = Password::from_password(Password::new(
             None,
             "p5".to_string(),
             None,
@@ -218,12 +241,12 @@ mod tests {
             99,
             Date::new(2022, 12, 3),
             None,
-        )));
-        p5.borrow_mut().parent = Some(p4.clone());
+        ));
+        p5.lock().borrow_mut().parent = Some(p4.clone());
 
-        p1.borrow_mut().parent = Some(p3.clone());
+        p1.lock().borrow_mut().parent = Some(p3.clone());
         fix_password_recursion(p5.clone());
-        assert_eq!(p3.borrow().parent, None);
+        assert_eq!(p3.lock().borrow().parent.is_none(), true);
     }
 
     #[test]

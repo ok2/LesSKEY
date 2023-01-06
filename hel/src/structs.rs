@@ -1,13 +1,16 @@
 use crate::password::{Comment, Name, PasswordRef};
+use parking_lot::Mutex;
+use parking_lot::ReentrantMutex;
+use std::cell::RefCell;
 use std::fmt;
 use std::path::Path;
-use std::{cell::RefCell, rc::Rc};
+use std::sync::Arc;
 
 use crate::lk::LK;
 use crate::parser::command_parser;
 use crate::repl::{LKEval, LKRead};
+use crate::utils::editor::{password, Editor};
 use crate::utils::home;
-use crate::utils::editor::{ Editor, password };
 
 lazy_static! {
     pub static ref HISTORY_FILE: Box<Path> = {
@@ -54,7 +57,7 @@ pub enum LKErr<'a> {
     ParseError(peg::error::ParseError<peg::str::LineCol>),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug)]
 pub enum Command<'a> {
     Add(PasswordRef),
     Leave(Name),
@@ -76,6 +79,34 @@ pub enum Command<'a> {
     Noop,
     Help,
     Quit,
+}
+
+impl<'a> PartialEq for Command<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Command::Add(s), Command::Add(o)) => *s.lock() == *o.lock(),
+            (Command::Leave(s), Command::Leave(o)) => s == o,
+            (Command::Ls(s), Command::Ls(o)) => s == o,
+            (Command::Ld(s), Command::Ld(o)) => s == o,
+            (Command::Mv(a, b), Command::Mv(x, y)) => a == x && b == y,
+            (Command::Rm(s), Command::Rm(o)) => s == o,
+            (Command::Enc(s), Command::Enc(o)) => s == o,
+            (Command::Gen(a, b), Command::Gen(x, y)) => a == x && *b.lock() == *y.lock(),
+            (Command::Pass(s), Command::Pass(o)) => s == o,
+            (Command::UnPass(s), Command::UnPass(o)) => s == o,
+            (Command::Correct(s), Command::Correct(o)) => s == o,
+            (Command::Uncorrect(s), Command::Uncorrect(o)) => s == o,
+            (Command::PasteBuffer(s), Command::PasteBuffer(o)) => s == o,
+            (Command::Source(s), Command::Source(o)) => s == o,
+            (Command::Dump(s), Command::Dump(o)) => s == o,
+            (Command::Comment(a, b), Command::Comment(x, y)) => a == x && b == y,
+            (Command::Error(s), Command::Error(o)) => s == o,
+            (Command::Noop, Command::Noop) => true,
+            (Command::Help, Command::Help) => true,
+            (Command::Quit, Command::Quit) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -114,21 +145,21 @@ impl std::fmt::Display for Mode {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug)]
 pub struct LKOut {
-    pub out: Option<Rc<RefCell<Vec<String>>>>,
-    pub err: Option<Rc<RefCell<Vec<String>>>>,
+    pub out: Option<Arc<Mutex<Vec<String>>>>,
+    pub err: Option<Arc<Mutex<Vec<String>>>>,
 }
 
 impl LKOut {
     pub fn new() -> Self {
         Self {
-            out: Some(Rc::new(RefCell::new(vec![]))),
-            err: Some(Rc::new(RefCell::new(vec![]))),
+            out: Some(Arc::new(Mutex::new(vec![]))),
+            err: Some(Arc::new(Mutex::new(vec![]))),
         }
     }
 
-    pub fn from_lkout(out: Option<Rc<RefCell<Vec<String>>>>, err: Option<Rc<RefCell<Vec<String>>>>) -> Self {
+    pub fn from_lkout(out: Option<Arc<Mutex<Vec<String>>>>, err: Option<Arc<Mutex<Vec<String>>>>) -> Self {
         let o = match out {
             Some(v) => Some(v.clone()),
             None => None,
@@ -143,8 +174,8 @@ impl LKOut {
     #[allow(dead_code)]
     pub fn from_vecs(out: Vec<String>, err: Vec<String>) -> Self {
         Self {
-            out: Some(Rc::new(RefCell::new(out))),
-            err: Some(Rc::new(RefCell::new(err))),
+            out: Some(Arc::new(Mutex::new(out))),
+            err: Some(Arc::new(Mutex::new(err))),
         }
     }
 
@@ -152,7 +183,7 @@ impl LKOut {
         if !self.out.is_some() {
             return;
         }
-        for line in self.out.as_ref().unwrap().borrow().iter() {
+        for line in self.out.as_ref().unwrap().lock().iter() {
             out.o(line.to_string())
         }
     }
@@ -161,7 +192,7 @@ impl LKOut {
         if !self.err.is_some() {
             return;
         }
-        for line in self.err.as_ref().unwrap().borrow().iter() {
+        for line in self.err.as_ref().unwrap().lock().iter() {
             out.e(line.to_string())
         }
     }
@@ -170,7 +201,7 @@ impl LKOut {
         if !self.out.is_some() {
             return;
         }
-        for line in self.out.as_ref().unwrap().borrow().iter() {
+        for line in self.out.as_ref().unwrap().lock().iter() {
             println!("{}", line);
         }
     }
@@ -179,7 +210,7 @@ impl LKOut {
         if !self.err.is_some() {
             return;
         }
-        for line in self.err.as_ref().unwrap().borrow().iter() {
+        for line in self.err.as_ref().unwrap().lock().iter() {
             eprintln!("{}", line);
         }
     }
@@ -191,7 +222,7 @@ impl LKOut {
 
     pub fn data(&self) -> String {
         if self.out.is_some() {
-            self.out.as_ref().unwrap().borrow().join("\n")
+            self.out.as_ref().unwrap().lock().join("\n")
         } else {
             "".to_string()
         }
@@ -202,13 +233,27 @@ impl LKOut {
     }
     pub fn o(&self, line: String) {
         if self.out.is_some() {
-            self.out.as_ref().unwrap().borrow_mut().push(line);
+            self.out.as_ref().unwrap().lock().push(line);
         }
     }
     pub fn e(&self, line: String) {
         if self.err.is_some() {
-            self.err.as_ref().unwrap().borrow_mut().push(line);
+            self.err.as_ref().unwrap().lock().push(line);
         }
+    }
+}
+
+impl PartialEq for LKOut {
+    fn eq(&self, other: &Self) -> bool {
+        (match (&self.out, &other.out) {
+            (Some(a), Some(b)) => *a.lock() == *b.lock(),
+            (None, None) => true,
+            _ => false,
+        } && match (&self.err, &other.err) {
+            (Some(a), Some(b)) => *a.lock() == *b.lock(),
+            (None, None) => true,
+            _ => false,
+        })
     }
 }
 
@@ -263,13 +308,15 @@ impl fmt::Display for Radix {
 }
 
 pub fn init() -> Option<LKRead> {
-    let lk = Rc::new(RefCell::new(LK::new()));
+    let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
 
     match std::fs::read_to_string(INIT_FILE.to_str().unwrap()) {
         Ok(script) => match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    if !LKEval::new(cmd, lk.clone(), password).eval().print() { return None; }
+                    if !LKEval::new(cmd, lk.clone(), password).eval().print() {
+                        return None;
+                    }
                 }
             }
             Err(err) => {
@@ -349,9 +396,9 @@ mod tests {
 
         let lkread = init().unwrap();
         assert_eq!(lkread.prompt, "test> ");
-        assert_eq!(lkread.state.borrow().db.contains_key("t1"), true);
+        assert_eq!(lkread.state.lock().borrow().db.contains_key("t1"), true);
 
-        let t1 = Rc::new(RefCell::new(Password::new(
+        let t1 = Password::from_password(Password::new(
             None,
             "t1".to_string(),
             None,
@@ -359,8 +406,8 @@ mod tests {
             99,
             Date::new(2022, 10, 10),
             None,
-        )));
-        let t2 = Rc::new(RefCell::new(Password::new(
+        ));
+        let t2 = Password::from_password(Password::new(
             None,
             "t2".to_string(),
             None,
@@ -368,9 +415,9 @@ mod tests {
             99,
             Date::new(2022, 10, 10),
             Some("test".to_string()),
-        )));
-        t2.borrow_mut().parent = Some(t1.clone());
-        let t3 = Rc::new(RefCell::new(Password::new(
+        ));
+        t2.lock().borrow_mut().parent = Some(t1.clone());
+        let t3 = Password::from_password(Password::new(
             None,
             "t3".to_string(),
             None,
@@ -378,15 +425,13 @@ mod tests {
             99,
             Date::new(2022, 10, 10),
             Some("aoeu".to_string()),
-        )));
-        t3.borrow_mut().parent = Some(t2.clone());
-        assert_eq!(*lkread.state.borrow().db.get("t1").unwrap().borrow(), *t1.borrow());
-        assert_eq!(*lkread.state.borrow().db.get("t2").unwrap().borrow(), *t2.borrow());
-        assert_eq!(*lkread.state.borrow().db.get("t3").unwrap().borrow(), *t3.borrow());
+        ));
+        t3.lock().borrow_mut().parent = Some(t2.clone());
+        assert_eq!(*lkread.state.lock().borrow().db.get("t1").unwrap().lock(), *t1.lock());
+        assert_eq!(*lkread.state.lock().borrow().db.get("t2").unwrap().lock(), *t2.lock());
+        assert_eq!(*lkread.state.lock().borrow().db.get("t3").unwrap().lock(), *t3.lock());
 
-        LKEval::new(command_parser::cmd("save").unwrap(), lkread.state.clone(), password)
-            .eval()
-            .print();
+        LKEval::new(command_parser::cmd("save").unwrap(), lkread.state.clone(), password).eval().print();
         assert_eq!(
             std::fs::read_to_string("test_dump").expect("read"),
             "add       t1 R 99 2022-10-10\nadd       t2 R 99 2022-10-10 test ^t1\nadd       t3 R 99 2022-10-10 aoeu ^t2\n".to_string()
@@ -412,7 +457,7 @@ mod tests {
                 ]
             )
         );
-        lkread.state.borrow_mut().secrets.clear();
+        lkread.state.lock().borrow_mut().secrets.clear();
         let pr = LKEval::new(command_parser::cmd("pb enc t3").unwrap(), lkread.state.clone(), |v| {
             if v == "/" {
                 Ok("a".to_string())

@@ -11,14 +11,14 @@ use crate::password::fix_password_recursion;
 use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
 use crate::structs::{LKOut, Radix, CORRECT_FILE, DUMP_FILE};
-use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
 use crate::utils::editor::password;
+use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
 
 impl<'a> LKEval<'a> {
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
-        match self.state.borrow().ls.get(name) {
+        match self.state.lock().borrow().ls.get(name) {
             Some(pwd) => Some(pwd.clone()),
-            None => match self.state.borrow().db.get(name) {
+            None => match self.state.lock().borrow().db.get(name) {
                 Some(pwd) => Some(pwd.clone()),
                 None => None,
             },
@@ -34,15 +34,15 @@ impl<'a> LKEval<'a> {
                 None => (),
             }
         }
-        let parent = match &pwd.borrow().parent {
-            Some(p) => p.borrow().name.to_string(),
+        let parent = match &pwd.lock().borrow().parent {
+            Some(p) => p.lock().borrow().name.to_string(),
             None => "/".to_string(),
         };
-        let secret = match self.state.borrow().secrets.get(&parent) {
+        let secret = match self.state.lock().borrow().secrets.get(&parent) {
             Some(p) => Some(p.clone()),
             None => None,
         };
-        match (pwd.borrow().parent.clone(), secret) {
+        match (pwd.lock().borrow().parent.clone(), secret) {
             (_, Some(s)) => Some(s.to_string()),
             (None, None) => {
                 if read {
@@ -50,7 +50,7 @@ impl<'a> LKEval<'a> {
                         Ok(password) => {
                             let name = "/".to_string();
                             self.cmd_correct(&out, &name, true, Some(password.clone()));
-                            self.state.borrow_mut().secrets.insert(name, password.clone());
+                            self.state.lock().borrow_mut().secrets.insert(name, password.clone());
                             Some(password)
                         }
                         Err(_) => None,
@@ -61,22 +61,22 @@ impl<'a> LKEval<'a> {
             }
             (Some(pn), None) => {
                 let password = if read {
-                    (self.read_password)(format!("Password for {}: ", pn.borrow().name)).ok()
+                    (self.read_password)(format!("Password for {}: ", pn.lock().borrow().name)).ok()
                 } else {
                     None
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
-                    let name = pn.borrow().name.to_string();
+                    let name = pn.lock().borrow().name.to_string();
                     self.cmd_correct(&out, &name, true, Some(password.as_ref().unwrap().clone()));
-                    self.state.borrow_mut().secrets.insert(name, password.as_ref().unwrap().clone());
+                    self.state.lock().borrow_mut().secrets.insert(name, password.as_ref().unwrap().clone());
                     password
                 } else {
                     match self.read_master(&out, pn.clone(), read) {
                         Some(master) => {
-                            let password = pn.borrow().encode(master.as_str());
-                            let name = pn.borrow().name.to_string();
+                            let password = pn.lock().borrow().encode(master.as_str());
+                            let name = pn.lock().borrow().name.to_string();
                             self.cmd_correct(&out, &name, true, Some(password.to_string()));
-                            self.state.borrow_mut().secrets.insert(name, password.clone());
+                            self.state.lock().borrow_mut().secrets.insert(name, password.clone());
                             Some(password)
                         }
                         None => None,
@@ -87,15 +87,15 @@ impl<'a> LKEval<'a> {
     }
 
     pub fn cmd_add(&self, out: &LKOut, name: &PasswordRef) {
-        let state = &mut self.state.borrow_mut();
+        let state_cell = self.state.lock();
+        let mut state = state_cell.borrow_mut();
         let mut fix = false;
         {
-            let db = &mut state.db;
-            let pwname = &name.borrow().name.to_string();
-            if db.get(pwname).is_some() {
+            let pwname = &name.lock().borrow().name.to_string();
+            if state.db.get(pwname).is_some() {
                 out.e(format!("error: password {} already exist", pwname));
             } else {
-                db.insert(pwname.to_string(), name.clone());
+                state.db.insert(pwname.to_string(), name.clone());
                 fix = true;
             }
         }
@@ -105,9 +105,12 @@ impl<'a> LKEval<'a> {
     }
 
     pub fn cmd_leave(&self, out: &LKOut, name: &Name) {
-        let pwd = match self.state.borrow().ls.get(name) {
+        let pwd = match self.state.lock().borrow().ls.get(name) {
             Some(pwd) => pwd.clone(),
-            None => { out.e(format!("error: {} not found", name)); return; }
+            None => {
+                out.e(format!("error: {} not found", name));
+                return;
+            }
         };
         self.cmd_add(&out, &pwd);
     }
@@ -116,11 +119,11 @@ impl<'a> LKEval<'a> {
         match self.get_password(name) {
             Some(pwd) => {
                 if folder == "/" {
-                    pwd.borrow_mut().parent = None
+                    pwd.lock().borrow_mut().parent = None
                 } else {
                     match self.get_password(folder) {
                         Some(fld) => {
-                            pwd.borrow_mut().parent = Some(fld.clone());
+                            pwd.lock().borrow_mut().parent = Some(fld.clone());
                             fix_password_recursion(pwd.clone());
                         }
                         None => out.e(format!("error: folder {} not found", folder)),
@@ -134,18 +137,15 @@ impl<'a> LKEval<'a> {
     pub fn cmd_pass(&self, out: &LKOut, name: &String) {
         match self.get_password(name) {
             Some(p) => {
-                let pwd = (self.read_password)(format!("Password for {}: ", p.borrow().name)).unwrap();
-                self.cmd_correct(&out, &p.borrow().name, true, Some(pwd.clone()));
-                self.state.borrow_mut().secrets.insert(p.borrow().name.to_string(), pwd);
+                let pwd = (self.read_password)(format!("Password for {}: ", p.lock().borrow().name)).unwrap();
+                self.cmd_correct(&out, &p.lock().borrow().name, true, Some(pwd.clone()));
+                self.state.lock().borrow_mut().secrets.insert(p.lock().borrow().name.to_string(), pwd);
             }
             None => {
                 if name == "/" {
                     let pwd = (self.read_password)("Master: ".to_string()).unwrap();
                     self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
-                    self.state
-                        .borrow_mut()
-                        .secrets
-                        .insert("/".to_string(), pwd);
+                    self.state.lock().borrow_mut().secrets.insert("/".to_string(), pwd);
                 } else {
                     out.e(format!("error: password with name {} not found", name));
                 }
@@ -156,7 +156,7 @@ impl<'a> LKEval<'a> {
     pub fn cmd_comment(&self, out: &LKOut, name: &String, comment: &Option<String>) {
         match self.get_password(name) {
             Some(pwd) => {
-                pwd.borrow_mut().comment = match comment {
+                pwd.lock().borrow_mut().comment = match comment {
                     Some(c) => Some(c.to_string()),
                     None => None,
                 }
@@ -167,8 +167,8 @@ impl<'a> LKEval<'a> {
 
     pub fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, String)> {
         let root_folder = "/".to_string();
-        let (name, pass) = if name == "/" && self.state.borrow().secrets.contains_key(&root_folder) {
-            (root_folder.to_string(), self.state.borrow().secrets.get(&root_folder).unwrap().to_string())
+        let (name, pass) = if name == "/" && self.state.lock().borrow().secrets.contains_key(&root_folder) {
+            (root_folder.to_string(), self.state.lock().borrow().secrets.get(&root_folder).unwrap().to_string())
         } else {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
@@ -177,12 +177,12 @@ impl<'a> LKEval<'a> {
                     return None;
                 }
             };
-            let name = pwd.borrow().name.to_string();
-            if self.state.borrow().secrets.contains_key(&name) {
-                (name.clone(), self.state.borrow().secrets.get(&name).unwrap().to_string())
+            let name = pwd.lock().borrow().name.to_string();
+            if self.state.lock().borrow().secrets.contains_key(&name) {
+                (name.clone(), self.state.lock().borrow().secrets.get(&name).unwrap().to_string())
             } else {
                 match self.read_master(&out, pwd.clone(), true) {
-                    Some(sec) => (name.clone(), pwd.borrow().encode(sec.as_str())),
+                    Some(sec) => (name.clone(), pwd.lock().borrow().encode(sec.as_str())),
                     None => {
                         out.e(format!("error: master for {} not found", name));
                         return None;
@@ -253,7 +253,9 @@ impl<'a> LKEval<'a> {
                 for cmd in cmd_list {
                     let print = LKEval::new(cmd, self.state.clone(), password).eval();
                     print.out.copy(&out);
-                    if print.quit { return true; }
+                    if print.quit {
+                        return true;
+                    }
                 }
             }
             Err(e) => {
@@ -273,9 +275,9 @@ impl<'a> LKEval<'a> {
             let file = fs::File::create(script)?;
             let mut writer = BufWriter::new(file);
             let mut vals = data.values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
-            vals.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
+            vals.sort_by(|a, b| a.lock().borrow().name.cmp(&b.lock().borrow().name));
             for pwd in vals {
-                writeln!(writer, "add {}", pwd.borrow().to_string())?
+                writeln!(writer, "add {}", pwd.lock().borrow().to_string())?
             }
             Ok(())
         }
@@ -289,10 +291,11 @@ impl<'a> LKEval<'a> {
             };
             let data = self
                 .state
+                .lock()
                 .borrow()
                 .db
                 .values()
-                .map(|v| format!("add {}", v.borrow().to_string()))
+                .map(|v| format!("add {}", v.lock().borrow().to_string()))
                 .collect::<Vec<String>>()
                 .join("\n");
             let output = match call_cmd_with_input(&cmd, &args, data.as_str()) {
@@ -309,13 +312,13 @@ impl<'a> LKEval<'a> {
                 out.o(format!("Passwords saved to command {}", cmd));
             }
         } else if script.trim() == "-" {
-            let mut vals = (&self.state.borrow().db).values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
-            vals.sort_by(|a, b| a.borrow().name.cmp(&b.borrow().name));
+            let mut vals = (&self.state.lock().borrow().db).values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
+            vals.sort_by(|a, b| a.lock().borrow().name.cmp(&b.lock().borrow().name));
             for pwd in vals {
-                out.o(format!("add {}", pwd.borrow().to_string()))
-            };
+                out.o(format!("add {}", pwd.lock().borrow().to_string()))
+            }
         } else {
-            match save_dump(&self.state.borrow().db, &script) {
+            match save_dump(&self.state.lock().borrow().db, &script) {
                 Ok(()) => out.o(format!("Passwords saved to file {}", script)),
                 Err(e) => out.e(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
             };
@@ -334,24 +337,26 @@ impl<'a> LKEval<'a> {
             }
         };
         let mut tmp: Vec<PasswordRef> = vec![];
-        for (_, name) in &self.state.borrow().db {
-            if re.find(&name.borrow().to_string()).is_some() {
+        for (_, name) in &self.state.lock().borrow().db {
+            if re.find(&name.lock().borrow().to_string()).is_some() {
                 tmp.push(name.clone());
-            } else if re.find(&name.borrow().name).is_some() {
+            } else if re.find(&name.lock().borrow().name).is_some() {
                 tmp.push(name.clone());
-            } else if name.borrow().comment.is_some() && re.find(&name.borrow().comment.as_ref().unwrap()).is_some() {
+            } else if name.lock().borrow().comment.is_some()
+                && re.find(&name.lock().borrow().comment.as_ref().unwrap()).is_some()
+            {
                 tmp.push(name.clone());
             }
         }
-        tmp.sort_by(|a,b| a.borrow().name.cmp(&b.borrow().name));
+        tmp.sort_by(|a, b| a.lock().borrow().name.cmp(&b.lock().borrow().name));
         tmp.sort_by(sort_by);
-        self.state.borrow_mut().ls.clear();
+        self.state.lock().borrow_mut().ls.clear();
         let mut counter = 1;
         for pwd in tmp {
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
-            self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
-            out.o(format!("{:>3} {}", key, pwd.borrow().to_string()));
+            self.state.lock().borrow_mut().ls.insert(key.clone(), pwd.clone());
+            out.o(format!("{:>3} {}", key, pwd.lock().borrow().to_string()));
         }
     }
 
@@ -435,42 +440,42 @@ impl<'a> LKEval<'a> {
             static ref RE: Regex = Regex::new(r"^.+?(G+|X+)$").unwrap();
         }
         let num: usize = (*num).try_into().unwrap();
-        let pwd = name.borrow();
+        let pwd = name.lock();
         let mut genpwds: Vec<PasswordRef> = Vec::new();
-        match RE.captures(pwd.name.as_ref()) {
+        match RE.captures(pwd.borrow().name.as_ref()) {
             Some(caps) => {
                 let gen = &caps[1];
                 if gen.starts_with("G") {
-                    let name = pwd.name.trim_end_matches('G');
+                    let name = pwd.borrow().name.trim_end_matches('G').to_string();
                     for num in 1..10_u32.pow(gen.len().try_into().unwrap()) {
-                        let npwd = Password::from_password(&pwd);
-                        npwd.borrow_mut().name = format!("{}{}", name, num).to_string();
+                        let npwd = Password::from_password_ref(&pwd.borrow());
+                        npwd.lock().borrow_mut().name = format!("{}{}", name, num).to_string();
                         genpwds.push(npwd);
                     }
                 } else {
-                    let name = pwd.name.trim_end_matches('X');
+                    let name = pwd.borrow().name.trim_end_matches('X').to_string();
                     let num = rnd::range(1, 10_u32.pow(gen.len().try_into().unwrap()));
-                    let npwd = Password::from_password(&pwd);
-                    npwd.borrow_mut().name = format!("{}{}", name, num).to_string();
+                    let npwd = Password::from_password_ref(&pwd.borrow());
+                    npwd.lock().borrow_mut().name = format!("{}{}", name, num).to_string();
                     genpwds.push(npwd);
                 }
             }
             None => {
-                let npwd = Password::from_password(&pwd);
+                let npwd = Password::from_password_ref(&pwd.borrow());
                 genpwds.push(npwd);
             }
         }
-        self.state.borrow_mut().ls.clear();
+        self.state.lock().borrow_mut().ls.clear();
         let mut counter = 1;
         let mut lspwds: Vec<(PasswordRef, String)> = Vec::new();
         for num in 0..genpwds.len() {
             let pwd = genpwds[num].clone();
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
-            self.state.borrow_mut().ls.insert(key.to_string(), pwd.clone());
+            self.state.lock().borrow_mut().ls.insert(key.to_string(), pwd.clone());
             lspwds.push((pwd, key));
         }
-        self.state.borrow().fix_hierarchy();
+        self.state.lock().borrow().fix_hierarchy();
         let mut err = match &out.err {
             Some(e) => Some(e.clone()),
             None => None,
@@ -479,8 +484,8 @@ impl<'a> LKEval<'a> {
         for (pwd, key) in lspwds {
             let pass = match self.cmd_enc(&LKOut::from_lkout(None, err), &key) {
                 Some((name, pass)) => {
-                    if name != pwd.borrow().name {
-                        panic!("INTERNAL_ERROR: wrong name found: {} != {}", name, pwd.borrow().name);
+                    if name != pwd.lock().borrow().name {
+                        panic!("INTERNAL_ERROR: wrong name found: {} != {}", name, pwd.lock().borrow().name);
                     };
                     pass
                 }
@@ -493,15 +498,15 @@ impl<'a> LKEval<'a> {
             encpwds.push((pwd.clone(), pass));
         }
         encpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-        self.state.borrow_mut().ls.clear();
+        self.state.lock().borrow_mut().ls.clear();
         let mut counter = 1;
         out.o(format!("{:>3} {:>36} {:>4}       {}", "", "Password", "Len", "Name"));
         for num in (encpwds.len() - min(genpwds.len(), num))..encpwds.len() {
             let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
-            self.state.borrow_mut().ls.insert(key.clone(), pwd.clone());
-            out.o(format!("{:>3} {:>36} {:>4} {}", key, pass, pass.len(), pwd.borrow().to_string()));
+            self.state.lock().borrow_mut().ls.insert(key.clone(), pwd.clone());
+            out.o(format!("{:>3} {:>36} {:>4} {}", key, pass, pass.len(), pwd.lock().borrow().to_string()));
         }
     }
 }
