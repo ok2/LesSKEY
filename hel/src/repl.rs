@@ -124,6 +124,7 @@ impl<'a> LKEval<'a> {
                 quit = self.cmd_source(&out, script);
             }
             Command::Dump(script) => self.cmd_dump(&out, script),
+            Command::Pass(name, None) => self.cmd_pass(&out, &name, &None),
             Command::Pass(name, pass) => { to_history = false; self.cmd_pass(&out, &name, &pass); },
             Command::UnPass(name) => match self.state.lock().borrow_mut().secrets.remove(name) {
                 Some(_) => out.o(format!("Removed saved password for {}", name)),
