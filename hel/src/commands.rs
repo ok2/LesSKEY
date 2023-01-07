@@ -134,16 +134,22 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn cmd_pass(&self, out: &LKOut, name: &String) {
+    pub fn cmd_pass(&self, out: &LKOut, name: &String, pass: &Option<String>) {
         match self.get_password(name) {
             Some(p) => {
-                let pwd = (self.read_password)(format!("Password for {}: ", p.lock().borrow().name)).unwrap();
+                let pwd = match pass {
+                    Some(pp) => pp.to_string(),
+                    None => (self.read_password)(format!("Password for {}: ", p.lock().borrow().name)).unwrap(),
+                };
                 self.cmd_correct(&out, &p.lock().borrow().name, true, Some(pwd.clone()));
                 self.state.lock().borrow_mut().secrets.insert(p.lock().borrow().name.to_string(), pwd);
             }
             None => {
                 if name == "/" {
-                    let pwd = (self.read_password)("Master: ".to_string()).unwrap();
+                    let pwd = match pass {
+                        Some(pp) => pp.to_string(),
+                        None => (self.read_password)("Master: ".to_string()).unwrap(),
+                    };
                     self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
                     self.state.lock().borrow_mut().secrets.insert("/".to_string(), pwd);
                 } else {

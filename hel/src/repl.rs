@@ -122,7 +122,7 @@ impl<'a> LKEval<'a> {
                 quit = self.cmd_source(&out, script);
             }
             Command::Dump(script) => self.cmd_dump(&out, script),
-            Command::Pass(name) => self.cmd_pass(&out, &name),
+            Command::Pass(name, pass) => self.cmd_pass(&out, &name, &pass),
             Command::UnPass(name) => match self.state.lock().borrow_mut().secrets.remove(name) {
                 Some(_) => out.o(format!("Removed saved password for {}", name)),
                 None => out.e(format!("error: saved password for {} not found", name)),
@@ -411,5 +411,24 @@ mod tests {
                 lk.clone()
             )
         );
+    }
+
+    #[test]
+    fn exec_cmd_pass() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let t1 = Password::from_password(Password::new(
+            None,
+            "t1".to_string(),
+            None,
+            Mode::Regular,
+            99,
+            Date::new(2022, 12, 30),
+            None,
+        ));
+        LKEval::news(Command::Add(t1.clone()), lk.clone()).eval();
+        ({ let mut e = LKEval::news(Command::Pass("t1".to_string(), None), lk.clone()); e.read_password = |_| { Ok("test pwd1".to_string()) }; e }).eval();
+        assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "test pwd1");
+        LKEval::news(Command::Pass("t1".to_string(), Some("other pw".to_string())), lk.clone()).eval();
+        assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "other pw");
     }
 }

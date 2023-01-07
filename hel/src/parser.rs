@@ -95,7 +95,9 @@ peg::parser! {
         }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
-        rule pass_cmd() -> Command<'input> = "pass" _ name:word() { Command::Pass(name) }
+        rule pass_short_cmd() -> Command<'input> = "pass" _ name:word() { Command::Pass(name, None) }
+        rule pass_long_cmd() -> Command<'input> = "pass" _ name:word() _ pass:$(([' '..='~'])+) { Command::Pass(name, Some(pass.to_string())) }
+        rule pass_cmd() -> Command<'input> = p:(pass_long_cmd() / pass_short_cmd()) { p }
         rule correct_cmd() -> Command<'input> = "correct" _ name:word() { Command::Correct(name) }
         rule uncorrect_cmd() -> Command<'input> = "uncorrect" _ name:word() { Command::Uncorrect(name) }
         rule unpass_cmd() -> Command<'input> = "unpass" _ name:word() { Command::UnPass(name) }
