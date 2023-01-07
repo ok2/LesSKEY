@@ -91,6 +91,7 @@ pub mod home {
 pub mod editor {
     use crate::structs::LKErr;
     use rustyline::error::ReadlineError;
+    use rustyline::config::Configurer;
     use std::sync::Arc;
     use parking_lot::Mutex;
 
@@ -103,8 +104,10 @@ pub mod editor {
 
     impl Editor {
         pub fn new() -> EditorRef {
+            let mut editor = rustyline::Editor::<()>::new().unwrap();
+            editor.set_max_history_size(10000);
             Arc::new(Mutex::new(Self {
-                editor: rustyline::Editor::<()>::new().unwrap(),
+                editor: editor,
             }))
         }
 
