@@ -320,22 +320,18 @@ mod tests {
             Date::new(2022, 12, 30),
             None,
         ));
-        println!("POINT 1");
         assert_eq!(
             LKEval::news(Command::Add(t1.clone()), lk.clone()).eval(),
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
-        println!("POINT 2");
         assert_eq!(
             LKEval::news(Command::Add(t2.clone()), lk.clone()).eval(),
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
-        println!("POINT 3");
         assert_eq!(
             LKEval::news(Command::Add(t3.clone()), lk.clone()).eval(),
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
-        println!("POINT 4");
         assert_eq!(
             LKEval::news(Command::Mv("t3".to_string(), "t2".to_string()), lk.clone()).eval(),
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
@@ -358,7 +354,7 @@ mod tests {
             )
         );
         assert_eq!(
-            LKEval::newd(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "Master: " {
+            LKEval::newd(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "/" {
                 Ok("a".to_string())
             } else {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))

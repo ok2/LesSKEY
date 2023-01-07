@@ -46,7 +46,7 @@ impl<'a> LKEval<'a> {
             (_, Some(s)) => Some(s.to_string()),
             (None, None) => {
                 if read {
-                    match (self.read_password)("Master: ".to_string()) {
+                    match (self.read_password)("/".to_string()) {
                         Ok(password) => {
                             let name = "/".to_string();
                             self.cmd_correct(&out, &name, true, Some(password.clone()));
@@ -61,7 +61,7 @@ impl<'a> LKEval<'a> {
             }
             (Some(pn), None) => {
                 let password = if read {
-                    (self.read_password)(format!("Password for {}: ", pn.lock().borrow().name)).ok()
+                    (self.read_password)(pn.lock().borrow().name.to_string()).ok()
                 } else {
                     None
                 };
@@ -139,7 +139,7 @@ impl<'a> LKEval<'a> {
             Some(p) => {
                 let pwd = match pass {
                     Some(pp) => pp.to_string(),
-                    None => (self.read_password)(format!("Password for {}: ", p.lock().borrow().name)).unwrap(),
+                    None => (self.read_password)(p.lock().borrow().name.to_string()).unwrap(),
                 };
                 self.cmd_correct(&out, &p.lock().borrow().name, true, Some(pwd.clone()));
                 self.state.lock().borrow_mut().secrets.insert(p.lock().borrow().name.to_string(), pwd);
@@ -148,7 +148,7 @@ impl<'a> LKEval<'a> {
                 if name == "/" {
                     let pwd = match pass {
                         Some(pp) => pp.to_string(),
-                        None => (self.read_password)("Master: ".to_string()).unwrap(),
+                        None => (self.read_password)("/".to_string()).unwrap(),
                     };
                     self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
                     self.state.lock().borrow_mut().secrets.insert("/".to_string(), pwd);

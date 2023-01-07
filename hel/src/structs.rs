@@ -493,7 +493,7 @@ mod tests {
         assert_eq!(
             pr.out,
             LKOut::from_vecs(
-                vec!["fief gild sits can un very".to_string()],
+                vec!["san bud most noon jaw cash".to_string()],
                 vec![
                     "warning: password / is not marked as correct".to_string(),
                     "warning: password t1 is not marked as correct".to_string(),
@@ -523,6 +523,6 @@ mod tests {
                 ]
             )
         );
-        assert_eq!(std::fs::read_to_string("test_pb_out").expect("read"), "fief gild sits can un very");
+        assert_eq!(std::fs::read_to_string("test_pb_out").expect("read"), "san bud most noon jaw cash");
     }
 }

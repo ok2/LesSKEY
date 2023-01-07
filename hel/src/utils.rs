@@ -139,8 +139,8 @@ pub mod editor {
         }
     }
 
-    pub fn password(prompt: impl ToString) -> std::io::Result<String> {
-        rpassword::prompt_password(prompt)
+    pub fn password(pwname: String) -> std::io::Result<String> {
+        rpassword::prompt_password(format!("Password for {}: ", pwname))
     }
 }
 
