@@ -46,12 +46,14 @@ impl<'a> LKEval<'a> {
             (_, Some(s)) => Some(s.to_string()),
             (None, None) => {
                 if read {
-                    match (self.read_password)("/".to_string()) {
+                    let name = "/".to_string();
+                    match (self.read_password)(name.to_string()) {
                         Ok(password) => {
-                            let name = "/".to_string();
-                            self.cmd_correct(&out, &name, true, Some(password.clone()));
-                            self.state.lock().borrow_mut().secrets.insert(name, password.clone());
-                            Some(password)
+                            if password.len() > 0 {
+                                self.cmd_correct(&out, &name, true, Some(password.clone()));
+                                self.state.lock().borrow_mut().secrets.insert(name, password.clone());
+                                Some(password)
+                            } else { None }
                         }
                         Err(_) => None,
                     }
