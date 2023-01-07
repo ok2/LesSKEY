@@ -206,7 +206,7 @@ impl<'a> LKEval<'a> {
     pub fn cmd_pb(&self, out: &LKOut, command: &String) {
         match command_parser::cmd(command) {
             Ok(cmd) => {
-                let print = LKEval::new(cmd, self.state.clone(), self.read_password).eval();
+                let print = LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password).eval();
                 let data = print.out.data();
                 print.out.copy_err(&out);
                 if data.len() > 0 {
@@ -257,7 +257,7 @@ impl<'a> LKEval<'a> {
         match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    let print = LKEval::new(cmd, self.state.clone(), password).eval();
+                    let print = LKEval::new(self.rl.clone(), cmd, self.state.clone(), password).eval();
                     print.out.copy(&out);
                     if print.quit {
                         return true;

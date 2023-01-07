@@ -1,11 +1,11 @@
 use crate::lk::LKRef;
 use crate::parser::command_parser;
 use crate::structs::{Command, LKErr, LKOut, HISTORY_FILE};
-use crate::utils::editor::{password, Editor};
+use crate::utils::editor::{password, Editor, EditorRef};
 
 #[derive(Debug)]
 pub struct LKRead {
-    pub rl: Editor,
+    pub rl: EditorRef,
     pub prompt: String,
     pub state: LKRef,
     pub cmd: String,
@@ -15,6 +15,7 @@ pub struct LKRead {
 
 #[derive(Debug)]
 pub struct LKEval<'a> {
+    pub rl: EditorRef,
     pub cmd: Command<'a>,
     pub state: LKRef,
     pub read_password: fn(String) -> std::io::Result<String>,
@@ -28,7 +29,7 @@ pub struct LKPrint {
 }
 
 impl LKRead {
-    pub fn new(rl: Editor, prompt: String, state: LKRef) -> Self {
+    pub fn new(rl: EditorRef, prompt: String, state: LKRef) -> Self {
         Self {
             rl,
             prompt,
@@ -40,22 +41,14 @@ impl LKRead {
     }
 
     pub fn read(&mut self) -> LKEval {
-        let history_file = HISTORY_FILE.to_str().unwrap();
-        self.rl.clear_history();
-        match self.rl.load_history(&history_file) {
-            Ok(_) => (),
-            Err(_) => {
-                self.rl.add_history_entry("ls");
-                ()
-            }
-        }
         self.cmd = match &self.input {
             Some(cmd) => cmd.to_string(),
-            None => match self.rl.readline(&*self.prompt) {
+            None => match self.rl.lock().readline(&*self.prompt) {
                 Ok(str) => str,
                 Err(LKErr::EOF) => "quit".to_string(),
                 Err(err) => {
                     return LKEval::new(
+                        self.rl.clone(),
                         Command::Error(LKErr::ReadError(err.to_string())),
                         self.state.clone(),
                         self.read_password,
@@ -63,14 +56,9 @@ impl LKRead {
                 }
             }
         };
-        self.rl.add_history_entry(self.cmd.as_str());
-        match self.rl.save_history(&history_file) {
-            Ok(_) => (),
-            Err(_) => (),
-        }
         match command_parser::cmd(&self.cmd) {
-            Ok(cmd) => LKEval::new(cmd, self.state.clone(), self.read_password),
-            Err(err) => LKEval::new(Command::Error(LKErr::ParseError(err)), self.state.clone(), self.read_password),
+            Ok(cmd) => LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password),
+            Err(err) => LKEval::new(self.rl.clone(), Command::Error(LKErr::ParseError(err)), self.state.clone(), self.read_password),
         }
     }
 
@@ -80,17 +68,31 @@ impl LKRead {
 }
 
 impl<'a> LKEval<'a> {
-    pub fn new(cmd: Command<'a>, state: LKRef, read_password: fn(String) -> std::io::Result<String>) -> Self {
+    pub fn new(rl: EditorRef, cmd: Command<'a>, state: LKRef, read_password: fn(String) -> std::io::Result<String>) -> Self {
         Self {
+            rl,
             cmd,
             state,
             read_password,
         }
     }
 
+    pub fn news(cmd: Command<'a>, state: LKRef) -> Self {
+        LKEval::new(Editor::new(), cmd, state, |_| { Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "could not read password")) })
+    }
+
+    pub fn newd(cmd: Command<'a>, state: LKRef, read_password: fn(String) -> std::io::Result<String>) -> Self {
+        LKEval::new(Editor::new(), cmd, state, read_password)
+    }
+
     pub fn eval(&self) -> LKPrint {
         let out = LKOut::new();
         let mut quit: bool = false;
+        let history_file = HISTORY_FILE.to_str().unwrap();
+        let mut to_history = true;
+
+        self.rl.lock().clear_history();
+        self.rl.lock().load_history(&history_file).ok();
 
         match &self.cmd {
             Command::Quit => {
@@ -122,24 +124,32 @@ impl<'a> LKEval<'a> {
                 quit = self.cmd_source(&out, script);
             }
             Command::Dump(script) => self.cmd_dump(&out, script),
-            Command::Pass(name, pass) => self.cmd_pass(&out, &name, &pass),
+            Command::Pass(name, pass) => { to_history = false; self.cmd_pass(&out, &name, &pass); },
             Command::UnPass(name) => match self.state.lock().borrow_mut().secrets.remove(name) {
                 Some(_) => out.o(format!("Removed saved password for {}", name)),
                 None => out.e(format!("error: saved password for {} not found", name)),
             },
             Command::Correct(name) => self.cmd_correct(&out, name, true, None),
             Command::Uncorrect(name) => self.cmd_correct(&out, name, false, None),
-            Command::Noop => (),
+            Command::Noop => { to_history = false; },
             Command::Help => {
                 out.o("HELP".to_string());
             }
             Command::Mv(name, folder) => self.cmd_mv(&out, &name, &folder),
-            Command::Error(error) => match error {
-                LKErr::ParseError(e) => out.e(e.to_string()),
-                LKErr::ReadError(e) => out.e(e.to_string()),
-                LKErr::EOF => out.e("error: end of file".to_string()),
-                LKErr::Error(e) => out.e(format!("error: {}", e.to_string())),
+            Command::Error(error) => {
+                to_history = false;
+                match error {
+                    LKErr::ParseError(e) => out.e(e.to_string()),
+                    LKErr::ReadError(e) => out.e(e.to_string()),
+                    LKErr::EOF => out.e("error: end of file".to_string()),
+                    LKErr::Error(e) => out.e(format!("error: {}", e.to_string())),
+                };
             },
+        }
+
+        if to_history {
+            self.rl.lock().add_history_entry(self.cmd.to_string().as_str());
+            self.rl.lock().save_history(&history_file).ok();
         }
 
         LKPrint::new(out, quit, self.state.clone())
@@ -176,18 +186,6 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::sync::Arc;
-
-    impl<'a> LKEval<'a> {
-        pub fn news(cmd: Command<'a>, state: LKRef) -> Self {
-            Self {
-                cmd,
-                state,
-                read_password: |_| {
-                    Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "could not read password"))
-                },
-            }
-        }
-    }
 
     #[test]
     fn exec_cmds_basic() {
@@ -346,7 +344,7 @@ mod tests {
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         assert_eq!(
-            LKEval::new(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "NULL" {
+            LKEval::newd(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "NULL" {
                 Ok("a".to_string())
             } else {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
@@ -359,7 +357,7 @@ mod tests {
             )
         );
         assert_eq!(
-            LKEval::new(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "Master: " {
+            LKEval::newd(Command::Enc("t3".to_string()), lk.clone(), |p| if p == "Master: " {
                 Ok("a".to_string())
             } else {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
@@ -380,7 +378,7 @@ mod tests {
             )
         );
         assert_eq!(
-            LKEval::new(Command::Enc("t2".to_string()), lk.clone(), |p| if p == "NULL" {
+            LKEval::newd(Command::Enc("t2".to_string()), lk.clone(), |p| if p == "NULL" {
                 Ok("a".to_string())
             } else {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
@@ -396,7 +394,7 @@ mod tests {
             )
         );
         assert_eq!(
-            LKEval::new(Command::Enc("t1".to_string()), lk.clone(), |p| if p == "NULL" {
+            LKEval::newd(Command::Enc("t1".to_string()), lk.clone(), |p| if p == "NULL" {
                 Ok("a".to_string())
             } else {
                 Err(std::io::Error::new(std::io::ErrorKind::NotFound, "test"))
@@ -426,7 +424,7 @@ mod tests {
             None,
         ));
         LKEval::news(Command::Add(t1.clone()), lk.clone()).eval();
-        ({ let mut e = LKEval::news(Command::Pass("t1".to_string(), None), lk.clone()); e.read_password = |_| { Ok("test pwd1".to_string()) }; e }).eval();
+        LKEval::newd(Command::Pass("t1".to_string(), None), lk.clone(), |_| { Ok("test pwd1".to_string()) }).eval();
         assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "test pwd1");
         LKEval::news(Command::Pass("t1".to_string(), Some("other pw".to_string())), lk.clone()).eval();
         assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "other pw");

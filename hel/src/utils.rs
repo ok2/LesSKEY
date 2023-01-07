@@ -91,6 +91,10 @@ pub mod home {
 pub mod editor {
     use crate::structs::LKErr;
     use rustyline::error::ReadlineError;
+    use std::sync::Arc;
+    use parking_lot::Mutex;
+
+    pub type EditorRef = Arc<Mutex<Editor>>;
 
     #[derive(Debug)]
     pub struct Editor {
@@ -98,10 +102,10 @@ pub mod editor {
     }
 
     impl Editor {
-        pub fn new() -> Self {
-            Self {
+        pub fn new() -> EditorRef {
+            Arc::new(Mutex::new(Self {
                 editor: rustyline::Editor::<()>::new().unwrap(),
-            }
+            }))
         }
 
         pub fn clear_history(&mut self) {

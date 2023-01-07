@@ -109,6 +109,36 @@ impl<'a> PartialEq for Command<'a> {
     }
 }
 
+impl<'a> std::fmt::Display for Command<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::Add(s) => write!(f, "add {}", s.lock().borrow().to_string()),
+            Command::Keep(s) => write!(f, "keep {}", s),
+            Command::Ls(s) => write!(f, "ls {}", s),
+            Command::Ld(s) => write!(f, "ld {}", s),
+            Command::Mv(a, b) => write!(f, "mv {} {}", a, b),
+            Command::Rm(s) => write!(f, "rm {}", s),
+            Command::Enc(s) => write!(f, "enc {}", s),
+            Command::Gen(a, b) => write!(f, "gen{} {}", a, b.lock().borrow().to_string()),
+            Command::Pass(a, None) => write!(f, "pass {}", a),
+            Command::Pass(a, Some(b)) => write!(f, "pass {} {}", a, b),
+            Command::UnPass(s) => write!(f, "unpass {}", s),
+            Command::Correct(s) => write!(f, "correct {}", s),
+            Command::Uncorrect(s) => write!(f, "uncorrect {}", s),
+            Command::PasteBuffer(s) => write!(f, "pb {}", s),
+            Command::Source(s) => write!(f, "source {}", s),
+            Command::Dump(None) => write!(f, "dump"),
+            Command::Dump(Some(s)) => write!(f, "dump {}", s),
+            Command::Comment(a, None) => write!(f, "comment {}", a),
+            Command::Comment(a, Some(b)) => write!(f, "comment {} {}", a, b),
+            Command::Error(s) => write!(f, "error {}", s),
+            Command::Noop => write!(f, "noop"),
+            Command::Help => write!(f, "help"),
+            Command::Quit => write!(f, "quit"),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum Mode {
     Regular,
@@ -322,23 +352,25 @@ impl fmt::Display for Radix {
 
 pub fn init() -> Option<LKRead> {
     let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+    let editor = Editor::new();
 
     match std::fs::read_to_string(INIT_FILE.to_str().unwrap()) {
         Ok(script) => match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
-                    if !LKEval::new(cmd, lk.clone(), password).eval().print() {
+                    if !LKEval::new(editor.clone(), cmd, lk.clone(), password).eval().print() {
                         return None;
                     }
                 }
             }
             Err(err) => {
-                LKEval::new(Command::Error(LKErr::ParseError(err)), lk.clone(), password).eval().print();
+                LKEval::new(editor.clone(), Command::Error(LKErr::ParseError(err)), lk.clone(), password).eval().print();
             }
         },
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => (),
         Err(err) => {
             LKEval::new(
+                editor.clone(),
                 Command::Error(LKErr::Error(
                     format!("Failed to read init file {:?}: {}", INIT_FILE.to_str(), err).as_str(),
                 )),
@@ -349,7 +381,7 @@ pub fn init() -> Option<LKRead> {
             .print();
         }
     }
-    Some(LKRead::new(Editor::new(), PROMPT_SETTING.to_string(), lk.clone()))
+    Some(LKRead::new(editor.clone(), PROMPT_SETTING.to_string(), lk.clone()))
 }
 
 #[cfg(test)]
@@ -444,13 +476,13 @@ mod tests {
         assert_eq!(*lkread.state.lock().borrow().db.get("t2").unwrap().lock(), *t2.lock());
         assert_eq!(*lkread.state.lock().borrow().db.get("t3").unwrap().lock(), *t3.lock());
 
-        LKEval::new(command_parser::cmd("save").unwrap(), lkread.state.clone(), password).eval().print();
+        LKEval::newd(command_parser::cmd("save").unwrap(), lkread.state.clone(), password).eval().print();
         assert_eq!(
             std::fs::read_to_string("test_dump").expect("read"),
             "add       t1 R 99 2022-10-10\nadd       t2 R 99 2022-10-10 test ^t1\nadd       t3 R 99 2022-10-10 aoeu ^t2\n".to_string()
         );
 
-        let pr = LKEval::new(command_parser::cmd("enc t3").unwrap(), lkread.state.clone(), |v| {
+        let pr = LKEval::newd(command_parser::cmd("enc t3").unwrap(), lkread.state.clone(), |v| {
             if v == "/" {
                 Ok("a".to_string())
             } else {
@@ -471,7 +503,7 @@ mod tests {
             )
         );
         lkread.state.lock().borrow_mut().secrets.clear();
-        let pr = LKEval::new(command_parser::cmd("pb enc t3").unwrap(), lkread.state.clone(), |v| {
+        let pr = LKEval::newd(command_parser::cmd("pb enc t3").unwrap(), lkread.state.clone(), |v| {
             if v == "/" {
                 Ok("a".to_string())
             } else {
