@@ -52,7 +52,7 @@ pub mod rnd {
 
     #[wasm_bindgen]
     extern "C" {
-        #[wasm_bindgen(js_name = rnd_range)]
+        #[wasm_bindgen(js_name = hel_rnd_range)]
         fn extern_rnd_range(start: u32, end: u32) -> u32;
     }
 
@@ -154,11 +154,11 @@ pub mod editor {
 
     #[wasm_bindgen]
     extern "C" {
-        #[wasm_bindgen(js_name = read_line)]
-        fn extern_readline(prompt: &str) -> String;
+        #[wasm_bindgen(js_name = hel_read_password)]
+        fn extern_read_password(prompt: &str);
 
-        #[wasm_bindgen(js_name = read_password)]
-        fn extern_password(prompt: &str) -> String;
+        #[wasm_bindgen(js_name = hel_current_password)]
+        fn extern_current_password() -> Option<String>;
     }
 
     #[derive(Debug)]
@@ -187,13 +187,19 @@ pub mod editor {
             Ok(())
         }
 
-        pub fn readline<'a>(&mut self, prompt: &str) -> Result<String, LKErr<'a>> {
-            Ok(extern_readline(&prompt))
+        pub fn readline<'a>(&mut self, _prompt: &str) -> Result<String, LKErr<'a>> {
+            Ok("".to_string())
         }
     }
 
     pub fn password(prompt: String) -> std::io::Result<String> {
-        Ok(extern_password(&prompt))
+        extern_read_password(&prompt);
+        loop {
+            match extern_current_password() {
+                Some(p) => return Ok(p),
+                None => std::thread::sleep(std::time::Duration::from_millis(100)),
+            }
+        }
     }
 }
 

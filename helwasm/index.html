@@ -72,25 +72,24 @@
         font-size: 16px;
         white-space: pre-wrap;
       }
+
+      #passwordPrompt {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        tranform: translate(-50%, -50%);
+        backrground-color: white;
+        border: 1px solid black;
+        padding: 20px;
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module">
-      function read_line(prompt) {
-        console.log("called read_line: " + prompt);
-        return "line";
-      }
-
-      function read_password(prompt) {
-        console.log("called read_password: " + prompt);
-        return "password";
-      }
-
-      import init, { ok_add, hel_init, hel_command } from "./pkg/helwasm.js";
+      import init, { hel_init, hel_command } from "./pkg/helwasm.js";
       init().then(() => {
         window.hel = {
-          ok_add: ok_add,
           hel_init: hel_init,
           hel_command: hel_command,
         }
@@ -98,8 +97,11 @@
     </script>
     <script type="text/babel">
       function Terminal() {
+        const prompt = "> ";
         const [input, setInput] = React.useState("");
         const [output, setOutput] = React.useState([]);
+        const [passwordPrompt, setPasswordPrompt] = React.useState(undefined);
+        const [passwordInput, setPasswordInput] = React.useState("");
         const outputRef = React.useRef(null);
 
         React.useEffect(() => {
@@ -113,31 +115,51 @@
         function handleSubmit(event) {
           event.preventDefault();
           const result = executeCommand(input);
-          setOutput([...output, { prompt: "❯", command: input }, { prompt: "", command: result }]);
+          setOutput([...output, { prompt: prompt, command: input }, { prompt: "", command: result }]);
           setInput("");
         }
-      
+
+        function handlePasswordInput(event) {
+          setPasswordInput(event.target.value);
+        }
+
+        function handlePasswordSubmit(event) {
+          window.hel_current_password_value = passwordInput;
+          setPasswordPrompt(undefined);
+          setPasswordInput("");
+        }
+
+        function helReadPassword(prompt) {
+          window.hel_current_password_value = null;
+          setPasswordPrompt(prompt);
+        }
+        window.hel_read_password = helReadPassword;
+
+        function helCurrentPassword(prompt) {
+          return window.hel_current_password_value;
+        }
+        window.hel_current_password = helCurrentPassword;
+
         function executeCommand(command) {
-      return window.hel.hel_command(command);
+          return window.hel.hel_command(command);
         }
       
         return (
           <div className="terminal">
-            {output.map(({ prompt, command }, index) => (
-              <p key={index}>{prompt && (<span className="prompt">&#x276f;&nbsp;</span>)}{command}</p>
-            ))}
-              <form onSubmit={handleSubmit}>
-                <label>
-                  <span className="prompt" ref={outputRef}>&#x276f;&nbsp;</span>
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={handleInput}
-                    className="input"
-                    autoFocus
-                  />
-                </label>
-              </form>
+            {output.map(({ prompt, command }, index) => (<p key={index}>{prompt && (<span className="prompt">{prompt}</span>)}{command}</p>))}
+            <form onSubmit={handleSubmit}>
+              <label>
+                <span className="prompt" ref={outputRef}>{prompt}</span>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={handleInput}
+                  className="input"
+                  autoFocus
+                />
+              </label>
+            </form>
+            {passwordPrompt !== undefined && (<form onSubmit={handlePasswordSubmit}><label><span className="prompt">{passwordPrompt}</span><input type="password" value={passwordInput} onChange={handlePasswordInput} className="input" autoFocus /></label></form>)}
           </div>
         );
       }
