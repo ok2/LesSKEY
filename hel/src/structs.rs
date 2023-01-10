@@ -1,4 +1,5 @@
 use crate::password::{Comment, Name, PasswordRef};
+use num_integer::Integer;
 use parking_lot::Mutex;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
@@ -261,11 +262,19 @@ impl LKOut {
     pub fn output(&self) -> Vec<String> {
         let mut out: Vec<String> = vec![];
         match &self.err {
-            Some(o) => for l in &*o.lock() { out.push(l.to_string()); },
+            Some(o) => {
+                for l in &*o.lock() {
+                    out.push(l.to_string());
+                }
+            }
             _ => (),
         }
         match &self.out {
-            Some(o) => for l in &*o.lock() { out.push(l.to_string()); },
+            Some(o) => {
+                for l in &*o.lock() {
+                    out.push(l.to_string());
+                }
+            }
             _ => (),
         }
         out
@@ -317,35 +326,26 @@ impl Radix {
 
 impl fmt::Display for Radix {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut x = self.x;
-        // Good for binary formatting of `u128`s
-        let mut result = ['\0'; 128];
-        let mut used = 0;
-        let negative = x < 0;
-        if negative {
-            x *= -1;
-        }
-        let mut x = x as u32;
-        loop {
-            let m = x % self.radix;
-            x /= self.radix;
+        let (mut x, negative): (u32, bool) = if self.x < 0 {
+            ((self.x * -1).try_into().unwrap(), true)
+        } else {
+            ((self.x).try_into().unwrap(), false)
+        };
+        let mut result = Vec::new();
 
-            result[used] = std::char::from_digit(m, self.radix).unwrap();
-            used += 1;
-
-            if x == 0 {
-                break;
-            }
+        while x != 0 {
+            let (n, m) = x.div_rem(&self.radix);
+            result.push(std::char::from_digit(m as u32, self.radix).unwrap());
+            x = n;
         }
 
         if negative {
             write!(f, "-")?;
         }
 
-        for c in result[..used].iter().rev() {
+        for c in result.iter().rev() {
             write!(f, "{}", c)?;
         }
-
         Ok(())
     }
 }
@@ -364,7 +364,9 @@ pub fn init() -> Option<LKRead> {
                 }
             }
             Err(err) => {
-                LKEval::new(editor.clone(), Command::Error(LKErr::ParseError(err)), lk.clone(), password).eval().print();
+                LKEval::new(editor.clone(), Command::Error(LKErr::ParseError(err)), lk.clone(), password)
+                    .eval()
+                    .print();
             }
         },
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => (),

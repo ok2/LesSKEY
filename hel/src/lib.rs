@@ -3,6 +3,7 @@ extern crate lazy_static;
 #[allow(unused_imports)]
 #[macro_use(defer)]
 extern crate scopeguard;
+extern crate num_integer;
 
 pub mod commands;
 pub mod lk;
