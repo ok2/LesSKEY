@@ -2,7 +2,7 @@ use shlex::split;
 use std::env;
 use std::ffi::OsString;
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 pub mod date {
@@ -204,18 +204,22 @@ pub mod editor {
 }
 
 pub fn call_cmd_with_input(cmd: &str, args: &Vec<String>, input: &str) -> io::Result<String> {
-    let mut cmd = Command::new(cmd).args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
-    let mut stdin = cmd.stdin.take().unwrap();
-    let stdout = cmd.stdout.as_mut().unwrap();
-    let in_data = input.to_string();
-    let write_handle = std::thread::spawn(move || stdin.write_all(in_data.as_bytes()));
-    let mut output = Vec::new();
-    stdout.read_to_end(&mut output)?;
-    match write_handle.join() {
-        Ok(_) => (),
-        Err(_) => return Err(io::Error::new(io::ErrorKind::Other, "Failed to run command")),
+    let mut cmd = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    {
+        let stdin = cmd.stdin.as_mut().unwrap();
+        stdin
+            .write_all(input.as_bytes())
+            .expect("Failed to write input to stdin");
     }
-    match String::from_utf8(output) {
+
+    let output = cmd.wait_with_output()?;
+
+    match String::from_utf8(output.stdout) {
         Ok(x) => Ok(x),
         Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.utf8_error())),
     }
@@ -269,5 +273,14 @@ line 4"###
             call_cmd_with_input("echo", &vec!["-n".to_string(), "test is ok".to_string()], "").unwrap(),
             "test is ok".to_string()
         );
+    }
+
+    #[test]
+    fn check_correct_stdin() {
+        let cmd = "cat";
+        let args = vec![];
+        let input = "Hello World!";
+        let output = call_cmd_with_input(cmd, &args, input).unwrap();
+        assert_eq!(output, "Hello World!");
     }
 }
