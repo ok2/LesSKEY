@@ -94,8 +94,10 @@ impl<'a> LKEval<'a> {
         let mut fix = false;
         {
             let pwname = &name.lock().borrow().name.to_string();
-            if state.db.get(pwname).is_some() {
-                out.e(format!("error: password {} already exist", pwname));
+            if let Some(oldname) = state.db.get(pwname) {
+                if name.lock().borrow().to_string() != oldname.lock().borrow().to_string() {
+                    out.e(format!("error: password {} already exist", pwname));
+                }
             } else {
                 state.db.insert(pwname.to_string(), name.clone());
                 fix = true;
