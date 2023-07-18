@@ -113,14 +113,14 @@ impl<'a> PartialEq for Command<'a> {
 impl<'a> std::fmt::Display for Command<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Command::Add(s) => write!(f, "add {}", s.lock().borrow().to_string()),
+            Command::Add(s) => write!(f, "add {}", s.lock().borrow().to_string().trim()),
             Command::Keep(s) => write!(f, "keep {}", s),
             Command::Ls(s) => write!(f, "ls {}", s),
             Command::Ld(s) => write!(f, "ld {}", s),
             Command::Mv(a, b) => write!(f, "mv {} {}", a, b),
             Command::Rm(s) => write!(f, "rm {}", s),
             Command::Enc(s) => write!(f, "enc {}", s),
-            Command::Gen(a, b) => write!(f, "gen{} {}", a, b.lock().borrow().to_string()),
+            Command::Gen(a, b) => write!(f, "gen{} {}", a, b.lock().borrow().to_string().trim()),
             Command::Pass(a, None) => write!(f, "pass {}", a),
             Command::Pass(a, Some(b)) => write!(f, "pass {} {}", a, b),
             Command::UnPass(s) => write!(f, "unpass {}", s),

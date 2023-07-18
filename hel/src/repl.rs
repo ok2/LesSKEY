@@ -41,11 +41,13 @@ impl LKRead {
     }
 
     pub fn read(&mut self) -> LKEval {
+        let history_file = HISTORY_FILE.to_str().unwrap();
         self.cmd = match &self.input {
             Some(cmd) => cmd.to_string(),
             None => match self.rl.lock().readline(&*self.prompt) {
                 Ok(str) => str,
                 Err(LKErr::EOF) => "quit".to_string(),
+                Err(LKErr::Error(_)) => "quit".to_string(),
                 Err(err) => {
                     return LKEval::new(
                         self.rl.clone(),
@@ -58,7 +60,11 @@ impl LKRead {
         };
         match command_parser::cmd(&self.cmd) {
             Ok(cmd) => LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password),
-            Err(err) => LKEval::new(self.rl.clone(), Command::Error(LKErr::ParseError(err)), self.state.clone(), self.read_password),
+            Err(err) => {
+                self.rl.lock().add_history_entry(&self.cmd);
+                self.rl.lock().save_history(&history_file).ok();
+                LKEval::new(self.rl.clone(), Command::Error(LKErr::ParseError(err)), self.state.clone(), self.read_password)
+            },
         }
     }
 
