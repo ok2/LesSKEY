@@ -317,7 +317,7 @@ pub struct Radix {
 impl Radix {
     pub fn new(x: i32, radix: u32) -> Result<Self, &'static str> {
         if radix < 2 || radix > 36 {
-            Err("Unnsupported radix")
+            Err("Unsupported radix")
         } else {
             Ok(Self { x, radix })
         }
@@ -333,10 +333,15 @@ impl fmt::Display for Radix {
         };
         let mut result = Vec::new();
 
+        // Convert to requested radix by repeated division
         while x != 0 {
             let (n, m) = x.div_rem(&self.radix);
             result.push(std::char::from_digit(m as u32, self.radix).unwrap());
             x = n;
+        }
+        // Ensure 0 is represented with a single digit
+        if result.is_empty() {
+            result.push('0');
         }
 
         if negative {
@@ -526,5 +531,12 @@ mod tests {
             )
         );
         assert_eq!(std::fs::read_to_string("test_pb_out").expect("read"), "san bud most noon jaw cash");
+    }
+
+    #[test]
+    fn radix_display_zero() {
+        assert_eq!(format!("{}", Radix::new(0, 10).unwrap()), "0");
+        assert_eq!(format!("{}", Radix::new(15, 16).unwrap()), "f");
+        assert_eq!(format!("{}", Radix::new(-15, 16).unwrap()), "-f");
     }
 }

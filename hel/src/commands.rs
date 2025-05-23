@@ -228,7 +228,7 @@ impl<'a> LKEval<'a> {
                     };
                 }
             }
-            Err(e) => out.e(format!("error: faild to parse command {}: {}", command, e.to_string())),
+            Err(e) => out.e(format!("error: failed to parse command {}: {}", command, e.to_string())),
         };
     }
 
@@ -330,7 +330,7 @@ impl<'a> LKEval<'a> {
         } else {
             match save_dump(&self.state.lock().borrow().db, &script) {
                 Ok(()) => out.o(format!("Passwords saved to file {}", script)),
-                Err(e) => out.e(format!("error: failed to dump passswords to {}: {}", script, e.to_string())),
+                Err(e) => out.e(format!("error: failed to dump passwords to {}: {}", script, e.to_string())),
             };
         }
     }
