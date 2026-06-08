@@ -34,10 +34,12 @@
 @font-face { font-family:"text-security-disc"; font-display:swap; src:url("./assets/fonts/text-security-disc.woff2") format("woff2"); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html { height: 100%; }
+html { height: 100%; overflow-x: hidden; overscroll-behavior-x: none; }
 
 body {
   min-height: 100%;
+  overflow-x: hidden;             /* no sideways pan; page is single column */
+  overscroll-behavior-x: none;    /* kill horizontal rubber-band / swipe-nav */
   font-family: var(--body);
   font-size: 16px;
   line-height: 1.6;
