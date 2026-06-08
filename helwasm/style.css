@@ -20,14 +20,18 @@
   --radius: 16px;
 }
 
+/* Self-hosted fonts — bundled with the app so it makes NO external requests and
+   talks to no third party (no Google Fonts, no CDN). Latin subset only. */
+@font-face { font-family:"Poppins"; font-style:normal; font-weight:600; font-display:swap; src:url("./assets/fonts/Poppins-600.woff2") format("woff2"); }
+@font-face { font-family:"Poppins"; font-style:normal; font-weight:700; font-display:swap; src:url("./assets/fonts/Poppins-700.woff2") format("woff2"); }
+@font-face { font-family:"Inter"; font-style:normal; font-weight:400; font-display:swap; src:url("./assets/fonts/Inter-400.woff2") format("woff2"); }
+@font-face { font-family:"Inter"; font-style:normal; font-weight:500; font-display:swap; src:url("./assets/fonts/Inter-500.woff2") format("woff2"); }
+@font-face { font-family:"Inter"; font-style:normal; font-weight:600; font-display:swap; src:url("./assets/fonts/Inter-600.woff2") format("woff2"); }
+@font-face { font-family:"JetBrains Mono"; font-style:normal; font-weight:400; font-display:swap; src:url("./assets/fonts/JetBrainsMono-400.woff2") format("woff2"); }
+@font-face { font-family:"JetBrains Mono"; font-style:normal; font-weight:500; font-display:swap; src:url("./assets/fonts/JetBrainsMono-500.woff2") format("woff2"); }
 /* Masked-secret font: dots glyphs so the real chars stay selectable/copyable.
    WebKit/Blink use -webkit-text-security; Firefox falls back to this font. */
-@font-face {
-  font-family: "text-security-disc";
-  src: url("https://cdn.jsdelivr.net/npm/text-security/dist/text-security-disc.woff2") format("woff2"),
-       url("https://cdn.jsdelivr.net/npm/text-security/dist/text-security-disc.woff") format("woff");
-  font-display: swap;
-}
+@font-face { font-family:"text-security-disc"; font-display:swap; src:url("./assets/fonts/text-security-disc.woff2") format("woff2"); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { height: 100%; }
@@ -115,6 +119,13 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; gap: clamp(16px, 2
 .about-grid h4 { font-family: var(--disp); font-weight: 600; font-size: 14px; color: var(--ink); margin-bottom: 5px; }
 .about-grid p { font-size: 13.5px; }
 .about-note { font-family: var(--mono); font-size: 12px; margin-top: 10px; }
+/* Privacy callout — make the "no server" promise visually prominent. */
+.about-privacy {
+  margin: 6px 0 2px; padding: 13px 16px; border-radius: 12px;
+  border: 1px solid var(--line); border-left: 3px solid var(--ocean);
+  background: rgba(27, 65, 97, 0.045); color: var(--ink); font-size: 14.5px; max-width: 76ch;
+}
+.about-privacy strong { color: var(--ocean); }
 @media (max-width: 680px) { .about-grid { grid-template-columns: 1fr; } }
 
 /* Cards */
