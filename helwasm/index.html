@@ -43,7 +43,10 @@
             <strong>re-generates</strong> each one on demand from your single
             <em>master password</em> plus the <em>name</em> of the account. The same name +
             master always produce the same password — so there is nothing secret to leak,
-            sync, or back up, and you only ever remember one phrase.
+            sync, or back up, and you only ever remember one phrase. By default each password
+            is six short, memorable words — the <em>correct horse battery staple</em> idea from
+            <a href="https://xkcd.com/936/" target="_blank" rel="noopener">xkcd 936</a> — built on
+            the classic S/KEY one-time-password scheme (RFC 2289).
           </p>
           <p class="about-privacy">
             <strong>Private by design.</strong> Everything happens on your device. Your master
@@ -73,9 +76,9 @@
             <div>
               <h4>Naming rules</h4>
               <p>
-                After a name you can add a length and a mode — <code>R</code> words,
-                <code>C</code> camel, <code>H</code> hex, <code>B</code> base64, <code>D</code>
-                digits (<code>U…</code> = upper). E.g. <code>github 20R</code>.
+                After a name you can add a length and a mode — <code>R</code> six memorable words
+                (the default), <code>C</code> camel, <code>H</code> hex, <code>B</code> base64,
+                <code>D</code> digits (<code>U…</code> = upper). E.g. <code>github 20R</code>.
               </p>
             </div>
           </div>

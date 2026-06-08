@@ -142,7 +142,9 @@ impl<'a> LKEval<'a> {
             Command::Noop => { to_history = false; },
             Command::Help => {
                 out.o(concat!(
-                    "hel - passwords are generated from your master + the entry name; nothing secret is stored.\n",
+                    "hel - S/KEY (RFC 2289) deterministic passwords from your master + the entry\n",
+                    "name; nothing secret is stored. The default mode is six short, memorable words\n",
+                    "(the \"correct horse battery staple\" idea from xkcd 936).\n",
                     "\n",
                     "entries\n",
                     "  add <name> [len][mode] [seq] [date] [text] [^parent]   define an entry\n",
@@ -162,7 +164,8 @@ impl<'a> LKEval<'a> {
                     "  save [target]     write it (file / localStorage key / |command)\n",
                     "  source <target>   load it                    set <key> <val>   config\n",
                     "\n",
-                    "modes  R regular  C camel  N nospace  H hex  B base64  D decimal   (U.. = UPPER)"
+                    "modes  R words  C camel  N hyphenated  H hex  B base64  D decimal   (U.. = UPPER)\n",
+                    "       R is the six-word S/KEY form: memorable, pronounceable, easy to type anywhere."
                 ).to_string());
             }
             Command::Mv(name, folder) => self.cmd_mv(&out, &name, &folder),
