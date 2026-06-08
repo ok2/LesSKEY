@@ -144,7 +144,9 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-colu
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 input[type="text"], input[type="password"] {
-  font-family: var(--mono); font-size: 15px; color: var(--ink);
+  /* 16px min: iOS Safari auto-zooms (and stays zoomed) when a focused input is
+     under 16px. Keep all focusable fields >= 16px to stop that. */
+  font-family: var(--mono); font-size: 16px; color: var(--ink);
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; width: 100%; outline: none;
   transition: border-color .15s, box-shadow .15s;
@@ -236,7 +238,7 @@ input.mask { -webkit-text-security: disc; }
   width: 100%; max-width: 680px; padding: 24px; }
 .modal h3 { font-family: var(--disp); font-weight: 600; margin-bottom: 10px; }
 .modal textarea {
-  width: 100%; height: 260px; resize: vertical; font-family: var(--mono); font-size: 13px;
+  width: 100%; height: 260px; resize: vertical; font-family: var(--mono); font-size: 16px;
   border: 1px solid var(--line); border-radius: 10px; padding: 12px; outline: none; white-space: pre;
 }
 .modal textarea:focus { border-color: var(--ocean); }
