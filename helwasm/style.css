@@ -1,4 +1,4 @@
-/* LesS/KEY web app — visual language mirrored from kaizenkodo.org
+/* LesS/KEY web app. Visual language mirrored from kaizenkodo.org
    (~/Repos/Identity/website/main.css): washi-paper cream, ocean blue, hanko red,
    Poppins / Inter / JetBrains Mono. Light, responsive, restrained. */
 
@@ -20,7 +20,7 @@
   --radius: 16px;
 }
 
-/* Self-hosted fonts — bundled with the app so it makes NO external requests and
+/* Self-hosted fonts, bundled with the app so it makes NO external requests and
    talks to no third party (no Google Fonts, no CDN). Latin subset only. */
 @font-face { font-family:"Poppins"; font-style:normal; font-weight:600; font-display:swap; src:url("./assets/fonts/Poppins-600.woff2") format("woff2"); }
 @font-face { font-family:"Poppins"; font-style:normal; font-weight:700; font-display:swap; src:url("./assets/fonts/Poppins-700.woff2") format("woff2"); }
@@ -95,7 +95,7 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-colu
 }
 .about > summary::-webkit-details-marker { display: none; }
 .about > summary:hover { color: var(--ocean-2); }
-/* attention badge — draws the eye to open the help panel; hidden once open */
+/* attention badge; draws the eye to open the help panel; hidden once open */
 .about-badge {
   font-family: var(--mono); font-size: 10.5px; font-weight: 500;
   text-transform: uppercase; letter-spacing: 0.1em;
@@ -125,7 +125,7 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-colu
 .about-grid h4 { font-family: var(--disp); font-weight: 600; font-size: 14px; color: var(--ink); margin-bottom: 5px; }
 .about-grid p { font-size: 13.5px; }
 .about-note { font-family: var(--mono); font-size: 12px; margin-top: 10px; }
-/* Privacy callout — make the "no server" promise visually prominent. */
+/* Privacy callout; make the "no server" promise visually prominent. */
 .about-privacy {
   margin: 6px 0 2px; padding: 13px 16px; border-radius: 12px;
   border: 1px solid var(--line); border-left: 3px solid var(--ocean);
@@ -157,7 +157,7 @@ input[type="text"], input[type="password"] {
 }
 input:focus { border-color: var(--ocean); box-shadow: 0 0 0 3px rgba(27, 65, 97, 0.12); }
 /* Masked TEXT inputs (master, pass overlay): visually masked but type=text, so
-   the browser never treats them as password fields — no autofill / save / "suggest
+   the browser never treats them as password fields, so no autofill / save / "suggest
    strong password". Firefox uses the bundled disc font. */
 input.mask { -webkit-text-security: disc; }
 @supports not (-webkit-text-security: disc) { input.mask { font-family: "text-security-disc", var(--mono); } }
@@ -192,7 +192,7 @@ input.mask { -webkit-text-security: disc; }
 
 /* Secret rendering: real text in the DOM, visually masked. Click toggles.
    Mask via -webkit-text-security on the MONO font so each disc keeps the mono
-   advance width — gen tables stay aligned. (No letter-spacing, no disc webfont
+   advance width, so gen tables stay aligned. (No letter-spacing, no disc webfont
    here, both of which would break the column widths.) */
 .secret {
   font-family: var(--mono);
@@ -214,7 +214,7 @@ input.mask { -webkit-text-security: disc; }
   font-family: var(--mono); font-size: 13.5px; line-height: 1.55;
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
   padding: 14px; height: clamp(280px, 46vh, 560px);
-  overflow: auto; white-space: pre;            /* no wrap — scroll left/right */
+  overflow: auto; white-space: pre;            /* no wrap, scroll left/right */
 }
 .console-out > div { min-width: max-content; }
 .console-out .cmd { color: var(--ocean); font-weight: 500; }
