@@ -78,7 +78,9 @@ body {
   background: var(--seal); box-shadow: 0 0 0 3px rgba(226, 59, 46, 0.16);
 }
 
-main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; gap: clamp(16px, 2.4vw, 24px); }
+/* minmax(0,1fr) lets the cards shrink below their content's intrinsic width, so
+   the console's pre/no-wrap lines scroll inside it instead of widening the page. */
+main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(16px, 2.4vw, 24px); }
 
 /* About / how-it-works (collapsible <details>) */
 .about { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
