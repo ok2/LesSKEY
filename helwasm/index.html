@@ -11,6 +11,11 @@
     <link rel="icon" href="./assets/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
     <link rel="manifest" href="./assets/site.webmanifest" />
+    <!-- Installable as a home-screen app (iOS + Android), runs standalone. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="LesS/KEY" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Fonts are self-hosted in style.css (./assets/fonts/) — no external requests. -->
     <link rel="stylesheet" href="./style.css" />
   </head>
@@ -22,6 +27,7 @@
           <span class="wordmark">LesS/KEY</span>
           <span class="tagline">password generator</span>
         </a>
+        <a class="byline" href="https://kaizenkodo.no" target="_blank" rel="noopener">by Kaizenkodo</a>
         <span class="nav-spacer"></span>
         <button class="btn ghost" id="importBtn">Import</button>
         <button class="btn ghost" id="exportBtn">Export</button>
@@ -139,6 +145,7 @@
     </main>
 
     <footer class="foot wrap">
+      A free tool by <a href="https://kaizenkodo.no" target="_blank" rel="noopener">Kaizenkodo</a> — kaizenkodo.no.
       Runs the real hel core compiled to WebAssembly — same generator as the CLI.
       Everything runs in your browser; nothing you type is ever sent to a server.
     </footer>
