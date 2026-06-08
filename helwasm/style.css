@@ -150,6 +150,11 @@ input[type="text"], input[type="password"] {
   transition: border-color .15s, box-shadow .15s;
 }
 input:focus { border-color: var(--ocean); box-shadow: 0 0 0 3px rgba(27, 65, 97, 0.12); }
+/* Masked TEXT inputs (master, pass overlay): visually masked but type=text, so
+   the browser never treats them as password fields — no autofill / save / "suggest
+   strong password". Firefox uses the bundled disc font. */
+input.mask { -webkit-text-security: disc; }
+@supports not (-webkit-text-security: disc) { input.mask { font-family: "text-security-disc", var(--mono); } }
 
 /* Buttons */
 .btn {

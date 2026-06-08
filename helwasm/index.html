@@ -102,11 +102,11 @@
         <div class="fields">
           <div class="field">
             <label for="qname">Name (+ optional rules)</label>
-            <input type="text" id="qname" placeholder="github    or    github 20R 99 2024-01-01" autocomplete="off" spellcheck="false" autofocus />
+            <input type="text" id="qname" placeholder="github    or    github 20R 99 2024-01-01" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" autofocus />
           </div>
           <div class="field">
             <label for="master">Master password</label>
-            <input type="password" id="master" placeholder="your master phrase" autocomplete="off" />
+            <input type="text" id="master" class="mask" placeholder="your master phrase" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" />
           </div>
         </div>
         <div class="result">
@@ -178,7 +178,7 @@
         <p class="hint">Cache a master/parent password for this name (used by <code>enc</code> in its subtree). Kept in memory only.</p>
         <div class="field">
           <label for="passInput">Password</label>
-          <input type="password" id="passInput" autocomplete="off" />
+          <input type="text" id="passInput" class="mask" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" />
         </div>
         <div class="row">
           <button class="btn" id="passOk">Set</button>
