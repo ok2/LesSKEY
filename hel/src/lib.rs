@@ -11,5 +11,6 @@ pub mod parser;
 pub mod password;
 pub mod repl;
 pub mod skey;
+pub mod storage;
 pub mod structs;
 pub mod utils;

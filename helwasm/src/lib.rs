@@ -4,13 +4,11 @@ extern crate hel;
 
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub fn ok_add(a: i32, b: i32) -> i32 {
-    a + b + 1
-}
-
 mod hel_state;
 
+/// Call once at page load: routes Rust panics to the browser console with a
+/// readable message + stack instead of an opaque "unreachable" trap.
 #[wasm_bindgen]
 pub fn hel_init() {
+    console_error_panic_hook::set_once();
 }

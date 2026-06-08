@@ -150,25 +150,32 @@ pub mod editor {
 #[cfg(target_arch = "wasm32")]
 pub mod editor {
     use crate::structs::LKErr;
+    use parking_lot::Mutex;
+    use std::sync::Arc;
     use wasm_bindgen::prelude::*;
+
+    // Mirror the unix editor's contract so repl.rs (which holds an `EditorRef`
+    // and calls `.lock()`) compiles unchanged under wasm.
+    pub type EditorRef = Arc<Mutex<Editor>>;
 
     #[wasm_bindgen]
     extern "C" {
-        #[wasm_bindgen(js_name = hel_read_password)]
-        fn extern_read_password(prompt: &str);
-
-        #[wasm_bindgen(js_name = hel_current_password)]
-        fn extern_current_password() -> Option<String>;
+        // Synchronous: the host page returns the current master-password value.
+        // (The old read/poll pair used thread::sleep, which deadlocks the single
+        // browser thread — never use blocking polling under wasm.)
+        #[wasm_bindgen(js_name = hel_get_password)]
+        fn extern_get_password(prompt: &str) -> String;
     }
 
     #[derive(Debug)]
     pub struct Editor {
+        #[allow(dead_code)]
         history: Vec<String>,
     }
 
     impl Editor {
-        pub fn new() -> Self {
-            Self { history: vec![] }
+        pub fn new() -> EditorRef {
+            Arc::new(Mutex::new(Self { history: vec![] }))
         }
 
         pub fn clear_history(&mut self) {
@@ -193,13 +200,7 @@ pub mod editor {
     }
 
     pub fn password(prompt: String) -> std::io::Result<String> {
-        extern_read_password(&prompt);
-        loop {
-            match extern_current_password() {
-                Some(p) => return Ok(p),
-                None => std::thread::sleep(std::time::Duration::from_millis(100)),
-            }
-        }
+        Ok(extern_get_password(&prompt))
     }
 }
 

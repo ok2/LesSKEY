@@ -392,7 +392,7 @@ pub fn init() -> Option<LKRead> {
     let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
     let editor = Editor::new();
 
-    match std::fs::read_to_string(INIT_FILE.to_str().unwrap()) {
+    match crate::storage::read(INIT_FILE.to_str().unwrap()) {
         Ok(script) => match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {

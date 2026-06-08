@@ -1,10 +1,7 @@
 use regex::Regex;
 use sha1::{Digest, Sha1};
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::{BufRead, BufReader};
-use std::io::{BufWriter, Write};
+use std::collections::HashSet;
 
 use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
@@ -12,6 +9,9 @@ use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
 use crate::structs::{config_get, config_set, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::editor::password;
+// call_cmd_with_input / get_cmd_args_from_command / get_copy_command_from_env are
+// only used by the native (non-wasm) subprocess branches.
+#[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
 
 impl<'a> LKEval<'a> {
@@ -214,18 +214,27 @@ impl<'a> LKEval<'a> {
                 let data = print.out.data();
                 print.out.copy_err(&out);
                 if data.len() > 0 {
-                    let (copy_command, copy_cmd_args) = get_copy_command_from_env();
-                    match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
-                        Ok(s) if s.len() > 0 => {
-                            out.o(format!(
-                                "Copied output with the command {}, and got following output:",
-                                copy_command
-                            ));
-                            out.o(s.trim().to_string());
-                        }
-                        Ok(_) => out.o(format!("Copied output with command {}", copy_command)),
-                        Err(e) => out.e(format!("error: failed to copy: {}", e.to_string())),
-                    };
+                    // Clipboard copy shells out to pbcopy/xclip/tmux: native only.
+                    // In the browser the page provides a Copy button instead.
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        out.e("error: pb (clipboard copy) is not available in the browser; use the Copy button".to_string());
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let (copy_command, copy_cmd_args) = get_copy_command_from_env();
+                        match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
+                            Ok(s) if s.len() > 0 => {
+                                out.o(format!(
+                                    "Copied output with the command {}, and got following output:",
+                                    copy_command
+                                ));
+                                out.o(s.trim().to_string());
+                            }
+                            Ok(_) => out.o(format!("Copied output with command {}", copy_command)),
+                            Err(e) => out.e(format!("error: failed to copy: {}", e.to_string())),
+                        };
+                    }
                 }
             }
             Err(e) => out.e(format!("error: failed to parse command {}: {}", command, e.to_string())),
@@ -234,31 +243,42 @@ impl<'a> LKEval<'a> {
 
     pub fn cmd_source(&self, out: &LKOut, source: &String) -> bool {
         out.o(format!("source {}", source));
-        let script = if source.trim().ends_with("|") {
-            let (cmd, args) = match get_cmd_args_from_command(source.trim().trim_end_matches('|')) {
-                Ok(c) => c,
+        let script: String;
+        if source.trim().ends_with("|") {
+            // Loading from a command's output needs a subprocess: native only.
+            #[cfg(target_arch = "wasm32")]
+            {
+                out.e("error: pipe source is not available in the browser".to_string());
+                return false;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let (cmd, args) = match get_cmd_args_from_command(source.trim().trim_end_matches('|')) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        out.e(format!("error: failed to parse command {:?}: {}", source, e.to_string()));
+                        return false;
+                    }
+                };
+                script = match call_cmd_with_input(&cmd, &args, "") {
+                    Ok(o) => o,
+                    Err(e) => {
+                        out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
+                        return false;
+                    }
+                };
+            }
+        } else {
+            // File path on native; localStorage key in the browser.
+            let key = shellexpand::full(source).unwrap().into_owned();
+            script = match crate::storage::read(&key) {
+                Ok(script) => script,
                 Err(e) => {
-                    out.e(format!("error: failed to parse command {:?}: {}", source, e.to_string()));
+                    out.e(format!("error: failed to read {}: {}", source, e.to_string()));
                     return false;
                 }
             };
-            match call_cmd_with_input(&cmd, &args, "") {
-                Ok(o) => o,
-                Err(e) => {
-                    out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
-                    return false;
-                }
-            }
-        } else {
-            let script = shellexpand::full(source).unwrap().into_owned();
-            match std::fs::read_to_string(script) {
-                Ok(script) => script,
-                Err(e) => {
-                    out.e(format!("error: failed to read file {}: {}", source, e.to_string()));
-                    return false;
-                }
-            }
-        };
+        }
         match command_parser::script(&script) {
             Ok(cmd_list) => {
                 for cmd in cmd_list {
@@ -321,39 +341,37 @@ impl<'a> LKEval<'a> {
             None => config_get("hel_dump").unwrap_or_else(|| DUMP_FILE.to_str().unwrap().to_string()),
         };
         let script = shellexpand::full(&script).unwrap().into_owned();
-        fn save_dump(data: &HashMap<Name, PasswordRef>, script: &String) -> std::io::Result<()> {
-            let file = fs::File::create(script)?;
-            let mut writer = BufWriter::new(file);
-            let mut vals = data.values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
-            vals.sort_by(|a, b| a.lock().borrow().name.cmp(&b.lock().borrow().name));
-            for pwd in vals {
-                writeln!(writer, "add {}", pwd.lock().borrow().to_string())?
-            }
-            Ok(())
-        }
         if script.trim().starts_with("|") {
-            let (cmd, args) = match get_cmd_args_from_command(script.trim().trim_start_matches('|')) {
-                Ok(c) => c,
-                Err(e) => {
-                    out.e(format!("error: failed to parse command {:?}: {}", script, e.to_string()));
-                    return;
+            // Piping the dump to a command needs a subprocess: native only.
+            #[cfg(target_arch = "wasm32")]
+            {
+                out.e("error: pipe dump is not available in the browser".to_string());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let (cmd, args) = match get_cmd_args_from_command(script.trim().trim_start_matches('|')) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        out.e(format!("error: failed to parse command {:?}: {}", script, e.to_string()));
+                        return;
+                    }
+                };
+                let data = self.serialize_db();
+                self.show_dump_diff(out, &data);
+                let output = match call_cmd_with_input(&cmd, &args, data.as_str()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
+                        return;
+                    }
+                };
+                self.state.lock().borrow_mut().last_dump = Some(data);
+                if output.len() > 0 {
+                    out.e(format!("Passwords saved to command {} and got following output:", cmd));
+                    out.o(output);
+                } else {
+                    out.o(format!("Passwords saved to command {}", cmd));
                 }
-            };
-            let data = self.serialize_db();
-            self.show_dump_diff(out, &data);
-            let output = match call_cmd_with_input(&cmd, &args, data.as_str()) {
-                Ok(o) => o,
-                Err(e) => {
-                    out.e(format!("error: failed to execute command {}: {}", cmd, e.to_string()));
-                    return;
-                }
-            };
-            self.state.lock().borrow_mut().last_dump = Some(data);
-            if output.len() > 0 {
-                out.e(format!("Passwords saved to command {} and got following output:", cmd));
-                out.o(output);
-            } else {
-                out.o(format!("Passwords saved to command {}", cmd));
             }
         } else if script.trim() == "-" {
             let mut vals = (&self.state.lock().borrow().db).values().map(|v| v.clone()).collect::<Vec<PasswordRef>>();
@@ -362,14 +380,15 @@ impl<'a> LKEval<'a> {
                 out.o(format!("add {}", pwd.lock().borrow().to_string()))
             }
         } else {
+            // File path on native; localStorage key in the browser.
             let data = self.serialize_db();
             self.show_dump_diff(out, &data);
-            // Bind first so the immutable borrow drops before the borrow_mut below.
-            let res = save_dump(&self.state.lock().borrow().db, &script);
-            match res {
+            // Trailing newline to match the historical file format (writeln per line).
+            let body = if data.is_empty() { String::new() } else { format!("{}\n", data) };
+            match crate::storage::write(&script, &body) {
                 Ok(()) => {
                     self.state.lock().borrow_mut().last_dump = Some(data);
-                    out.o(format!("Passwords saved to file {}", script));
+                    out.o(format!("Passwords saved to {}", script));
                 }
                 Err(e) => out.e(format!("error: failed to dump passwords to {}: {}", script, e.to_string())),
             };
@@ -434,11 +453,13 @@ impl<'a> LKEval<'a> {
             None => return,
         };
         fn load_lines() -> std::io::Result<HashSet<String>> {
-            let file = fs::File::open(CORRECT_FILE.to_str().unwrap())?;
-            let reader = BufReader::new(file);
+            let content = crate::storage::read(CORRECT_FILE.to_str().unwrap())?;
             let mut lines = HashSet::new();
-            for line in reader.lines() {
-                lines.insert(line?.trim().to_owned());
+            for line in content.lines() {
+                let line = line.trim();
+                if !line.is_empty() {
+                    lines.insert(line.to_owned());
+                }
             }
             Ok(lines)
         }
@@ -469,12 +490,12 @@ impl<'a> LKEval<'a> {
             data.remove(&encpwd);
         }
         fn save_lines(data: &HashSet<String>) -> std::io::Result<()> {
-            let file = fs::File::create(CORRECT_FILE.to_str().unwrap())?;
-            let mut writer = BufWriter::new(file);
+            let mut content = String::new();
             for entry in data {
-                writeln!(writer, "{}", entry)?;
+                content.push_str(entry);
+                content.push('\n');
             }
-            Ok(())
+            crate::storage::write(CORRECT_FILE.to_str().unwrap(), &content)
         }
         match save_lines(&data) {
             Ok(()) => out.o(format!(

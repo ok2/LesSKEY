@@ -1,172 +1,257 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-      html {
-        height: 100%;
-      }
-
-      body {
-        min-height: 100%;
-      }
-
-      html,
-      body {
-        background-color: #000;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        font-family: monospace;
-      }
-
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      .terminal {
-        height: 100%;
-        width: 100%;
-        margin: 0 auto;
-        color: #fff;
-        overflow-y: scroll;
-        padding: 20px;
-      }
-
-      .prompt {
-        color: #0f0;
-      }
-
-      .form {
-        display: flex;
-        width: 100vw;
-        margin: 0 auto;
-      }
-
-      .input {
-        background-color: transparent;
-        border: none;
-        color: #fff;
-        outline: none;
-        flex-grow: 1;
-      }
-
-      .input::placeholder {
-        color: #666;
-      }
-
-      label {
-        width: 100%;
-        white-space: nowrap;
-        display: inline-flex;
-      }
-
-      .terminal p,
-      .prompt,
-      .input {
-        font-family: monospace;
-        font-size: 16px;
-        white-space: pre-wrap;
-      }
-
-      #passwordPrompt {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        tranform: translate(-50%, -50%);
-        backrground-color: white;
-        border: 1px solid black;
-        padding: 20px;
-      }
-    </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b4161" />
+    <title>LesS/KEY — password generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module">
-      import init, { hel_init, hel_command } from "./pkg/helwasm.js";
-      init().then(() => {
-        window.hel = {
-          hel_init: hel_init,
-          hel_command: hel_command,
-        }
-      });
-    </script>
-    <script type="text/babel">
-      function Terminal() {
-        const prompt = "> ";
-        const [input, setInput] = React.useState("");
-        const [output, setOutput] = React.useState([]);
-        const [passwordPrompt, setPasswordPrompt] = React.useState(undefined);
-        const [passwordInput, setPasswordInput] = React.useState("");
-        const outputRef = React.useRef(null);
+    <header class="site">
+      <div class="wrap nav">
+        <a class="brand" href="./">
+          <span class="enso" aria-hidden="true"></span>
+          <span class="wordmark">LesS/KEY</span>
+        </a>
+        <span class="nav-spacer"></span>
+        <button class="btn ghost" id="importBtn">Import</button>
+        <button class="btn ghost" id="exportBtn">Export</button>
+      </div>
+    </header>
 
-        React.useEffect(() => {
-          outputRef.current.scrollIntoView({ behaviour: "smooth" });
-        }, [output]);
-      
-        function handleInput(event) {
-          setInput(event.target.value);
-        }
-      
-        function handleSubmit(event) {
-          event.preventDefault();
-          const result = executeCommand(input);
-          setOutput([...output, { prompt: prompt, command: input }, { prompt: "", command: result }]);
-          setInput("");
-        }
-
-        function handlePasswordInput(event) {
-          setPasswordInput(event.target.value);
-        }
-
-        function handlePasswordSubmit(event) {
-          window.hel_current_password_value = passwordInput;
-          setPasswordPrompt(undefined);
-          setPasswordInput("");
-        }
-
-        function helReadPassword(prompt) {
-          window.hel_current_password_value = null;
-          setPasswordPrompt(prompt);
-        }
-        window.hel_read_password = helReadPassword;
-
-        function helCurrentPassword(prompt) {
-          return window.hel_current_password_value;
-        }
-        window.hel_current_password = helCurrentPassword;
-
-        function executeCommand(command) {
-          return window.hel.hel_command(command);
-        }
-      
-        return (
-          <div className="terminal">
-            {output.map(({ prompt, command }, index) => (<p key={index}>{prompt && (<span className="prompt">{prompt}</span>)}{command}</p>))}
-            <form onSubmit={handleSubmit}>
-              <label>
-                <span className="prompt" ref={outputRef}>{prompt}</span>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={handleInput}
-                  className="input"
-                  autoFocus
-                />
-              </label>
-            </form>
-            {passwordPrompt !== undefined && (<form onSubmit={handlePasswordSubmit}><label><span className="prompt">{passwordPrompt}</span><input type="password" value={passwordInput} onChange={handlePasswordInput} className="input" autoFocus /></label></form>)}
+    <main class="wrap">
+      <!-- Quick generate -->
+      <section class="card">
+        <div class="eyebrow">Generate</div>
+        <h2>Quick password</h2>
+        <p class="hint">
+          Deterministic — the same name + master always regenerate the same
+          password. Nothing secret is stored; this entry is not added to your
+          catalog.
+        </p>
+        <div class="grid2">
+          <div class="field">
+            <label for="qname">Name (+ optional rules)</label>
+            <input type="text" id="qname" placeholder="exa91   or   exa91 20R 99 2020-01-01" autocomplete="off" spellcheck="false" autofocus />
           </div>
-        );
+          <div class="field">
+            <label for="master">Master password</label>
+            <input type="password" id="master" placeholder="your master phrase" autocomplete="off" />
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" id="show">Show</button>
+          <button class="btn ghost" id="copy">Copy</button>
+        </div>
+        <div class="secret-line">
+          <span class="tag">result</span>
+          <span id="qsecret"><span class="secret"></span></span>
+        </div>
+      </section>
+
+      <!-- Console -->
+      <section class="card">
+        <div class="eyebrow">Console</div>
+        <h2>All commands</h2>
+        <p class="hint">
+          The full hel command line — <code>ls</code>, <code>add</code>,
+          <code>enc</code>, <code>gen</code>, <code>comment</code>,
+          <code>correct</code>, <code>help</code>, … Your catalog persists in this
+          browser (localStorage). <code>enc</code>/<code>gen</code> output is
+          masked — click to reveal.
+        </p>
+        <div class="console-out" id="cout"></div>
+        <div class="console-in">
+          <span class="prompt">&gt;</span>
+          <input type="text" id="cin" placeholder="type a command and press Enter" autocomplete="off" spellcheck="false" />
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      Runs the real hel core compiled to WebAssembly — same generator as the CLI.
+    </footer>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Import modal -->
+    <div class="modal-bg" id="importModal">
+      <div class="modal">
+        <h3>Import catalog</h3>
+        <p class="hint">Paste your catalog (e.g. the text of the Notion page). Existing entries with the same name are replaced.</p>
+        <textarea id="importText" placeholder="add ..."></textarea>
+        <div class="row">
+          <button class="btn" id="importDo">Import</button>
+          <button class="btn ghost" id="importCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export modal -->
+    <div class="modal-bg" id="exportModal">
+      <div class="modal">
+        <h3>Export catalog</h3>
+        <p class="hint">Copy this and paste it back into your Notion page.</p>
+        <textarea id="exportText" readonly></textarea>
+        <div class="row">
+          <button class="btn" id="exportCopy">Copy</button>
+          <button class="btn ghost" id="exportClose">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import init, { hel_init, hel_command, hel_load_script } from "./pkg/helwasm.js";
+
+      const $ = (s) => document.querySelector(s);
+      const masterEl = () => document.getElementById("master");
+      const CATALOG_KEY = "hel_catalog";
+
+      // ---- host imports (wasm calls these by bare name → must be globals) ----
+      window.hel_get_password = () => (masterEl() ? masterEl().value : "") || "";
+      window.hel_rnd_range = (s, e) => {
+        if (e <= s) return s;
+        const r = crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+        return s + Math.floor(r * (e - s));
+      };
+      window.hel_storage_get = (k) => localStorage.getItem("hel:" + k);
+      window.hel_storage_set = (k, v) => localStorage.setItem("hel:" + k, v);
+
+      // ---- helpers ----
+      const persist = () => hel_command("save " + CATALOG_KEY);
+      const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const isSecretCmd = (cmd) => {
+        const v = cmd.trim().split(/\s+/)[0];
+        return v === "enc" || v === "gen";
+      };
+
+      let toastT;
+      function toast(msg) {
+        const t = $("#toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        clearTimeout(toastT);
+        toastT = setTimeout(() => t.classList.remove("show"), 1600);
       }
-  
-      const container = document.getElementById('root');
-      const root = ReactDOM.createRoot(container);
-      root.render(<Terminal />);
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast("Copied");
+        } catch {
+          toast("Copy failed");
+        }
+      }
+
+      function secretSpan(text) {
+        const s = document.createElement("span");
+        s.className = "secret";
+        s.textContent = text;
+        s.title = "click to reveal";
+        s.addEventListener("click", () => s.classList.toggle("revealed"));
+        return s;
+      }
+
+      // ---- quick generate (stateless: never pollutes the stored catalog) ----
+      let lastSecret = "";
+      function quickShow() {
+        const spec = $("#qname").value.trim();
+        if (!spec) return toast("Enter a name");
+        if (!masterEl().value) return toast("Enter the master password");
+        const name = spec.split(/\s+/)[0];
+        let out = hel_command("enc " + name);
+        if (/not found/.test(out)) {
+          hel_command("add " + spec);
+          out = hel_command("enc " + name);
+          hel_command("rm " + name);
+        }
+        const pw = out.split("\n").filter((l) => l && !/^(warning|error):/.test(l)).pop() || "";
+        lastSecret = pw;
+        const slot = $("#qsecret");
+        slot.innerHTML = "";
+        slot.appendChild(secretSpan(pw));
+        if (!pw) toast("No output");
+      }
+
+      // ---- console ----
+      function appendLine(html, cls) {
+        const out = $("#cout");
+        const div = document.createElement("div");
+        if (cls) div.className = cls;
+        div.innerHTML = html;
+        out.appendChild(div);
+        out.scrollTop = out.scrollHeight;
+      }
+      function appendSecret(text) {
+        const out = $("#cout");
+        const div = document.createElement("div");
+        div.appendChild(secretSpan(text));
+        out.appendChild(div);
+        out.scrollTop = out.scrollHeight;
+      }
+      function consoleRun(cmd) {
+        appendLine('<span class="cmd">&gt; ' + esc(cmd) + "</span>");
+        const out = hel_command(cmd);
+        persist();
+        if (out) {
+          const secret = isSecretCmd(cmd);
+          for (const line of out.split("\n")) {
+            if (/^(warning|error):/.test(line)) appendLine(esc(line), "err");
+            else if (secret && line.trim() && !line.startsWith("add ")) appendSecret(line);
+            else appendLine(esc(line) || "&nbsp;");
+          }
+        }
+      }
+
+      // ---- boot ----
+      async function boot() {
+        await init();
+        hel_init();
+        if (localStorage.getItem("hel:" + CATALOG_KEY)) hel_command("source " + CATALOG_KEY);
+
+        $("#show").onclick = quickShow;
+        $("#copy").onclick = () => (lastSecret ? copyText(lastSecret) : toast("Nothing to copy"));
+        $("#qname").addEventListener("keydown", (e) => e.key === "Enter" && quickShow());
+
+        const ci = $("#cin");
+        ci.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            const v = ci.value;
+            if (v.trim()) consoleRun(v);
+            ci.value = "";
+          }
+        });
+
+        $("#importBtn").onclick = () => $("#importModal").classList.add("show");
+        $("#importCancel").onclick = () => $("#importModal").classList.remove("show");
+        $("#importDo").onclick = () => {
+          const txt = $("#importText").value;
+          if (txt.trim()) {
+            hel_load_script(txt);
+            persist();
+            toast("Imported");
+            appendLine('<span class="muted"># imported catalog</span>');
+          }
+          $("#importModal").classList.remove("show");
+          $("#importText").value = "";
+        };
+        $("#exportBtn").onclick = () => {
+          $("#exportText").value = hel_command("dump -");
+          $("#exportModal").classList.add("show");
+        };
+        $("#exportClose").onclick = () => $("#exportModal").classList.remove("show");
+        $("#exportCopy").onclick = () => copyText($("#exportText").value);
+
+        appendLine('<span class="muted"># LesS/KEY ready — runs the real hel core via WASM. Try: help</span>');
+      }
+      boot();
     </script>
   </body>
 </html>
