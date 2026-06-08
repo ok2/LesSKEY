@@ -255,5 +255,11 @@ input.mask { -webkit-text-security: disc; }
   .nav { gap: 9px; height: 60px; }
   .tagline { display: none; }
   body { font-size: 15px; }
-  .result .actions { margin-left: 0; }
+  /* result row stacks cleanly on phones: the password on its own full-width line,
+     then a tidy meta line (result + len ........ Copy / Store). */
+  .result { align-items: center; row-gap: 12px; }
+  .result .secret { order: 1; flex: 1 1 100%; font-size: clamp(15px, 5.2vw, 19px); }
+  .result .tag { order: 2; }
+  .result .len { order: 3; margin-right: auto; }
+  .result .actions { order: 4; margin-left: 0; }
 }
