@@ -48,7 +48,7 @@ peg::parser! {
         rule qpname() -> Password = &(word() _ word()) pr:word() _ pn:word()
         { Password::new(Some(pr), pn, None, Mode::Regular, 99, Date::now(), None) }
         rule qname() -> Password = &(word()) pn:word()
-        { Password::new(None, pn, None, Mode::NoSpaceCamel, 99, Date::now(), None) }
+        { Password::new(None, pn, None, Mode::Regular, 99, Date::now(), None) }
         pub rule name() -> Password = name:(jname() / pname() / mname() / npname() / sname() / nname() / qpname() / qname())? {?
             match name { Some(n) => Ok(n), None => Err("failed to parse password description") }
         }
