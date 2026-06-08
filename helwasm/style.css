@@ -181,6 +181,10 @@ input.mask { -webkit-text-security: disc; }
 .result .tag { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 .result .actions { margin-left: auto; display: flex; gap: 8px; }
 .result .len { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+/* Quick-gen result: dynamic font (scales down on narrow phones) and wraps so a
+   long password stays inside the card. min-width:0 lets it shrink/wrap within
+   the flex row. Scoped so the console table keeps its fixed-width alignment. */
+.result .secret { font-size: clamp(13px, 4vw, 19px); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
 
 /* Secret rendering: real text in the DOM, visually masked. Click toggles.
    Mask via -webkit-text-security on the MONO font so each disc keeps the mono
