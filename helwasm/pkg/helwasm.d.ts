@@ -19,13 +19,30 @@ export function hel_init(): void;
  */
 export function hel_load_script(script: string): string;
 
+/**
+ * Parse a password spec (e.g. `exa91` or `exa91 20R 99 2020-01-01`) and return
+ * the canonical normalized form hel actually uses (name + mode + seq + date +
+ * comment), without touching state. Returns the input unchanged if it does not
+ * parse. Used by the UI to rewrite the name field on blur.
+ */
+export function hel_parse(spec: string): string;
+
+/**
+ * Parse a spec and return just the entry name hel resolves it to. Handles a
+ * leading prefix (e.g. `*P0 test1 …` → `test1`), which a naive first-token
+ * split would get wrong. Falls back to the first whitespace token.
+ */
+export function hel_parse_name(spec: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly hel_command: (a: number, b: number) => [number, number];
     readonly hel_init: () => void;
+    readonly hel_command: (a: number, b: number) => [number, number];
     readonly hel_load_script: (a: number, b: number) => [number, number];
+    readonly hel_parse: (a: number, b: number) => [number, number];
+    readonly hel_parse_name: (a: number, b: number) => [number, number];
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

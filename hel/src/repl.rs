@@ -141,7 +141,29 @@ impl<'a> LKEval<'a> {
             Command::Uncorrect(name) => self.cmd_correct(&out, name, false, None),
             Command::Noop => { to_history = false; },
             Command::Help => {
-                out.o("HELP".to_string());
+                out.o(concat!(
+                    "hel - passwords are generated from your master + the entry name; nothing secret is stored.\n",
+                    "\n",
+                    "entries\n",
+                    "  add <name> [len][mode] [seq] [date] [text] [^parent]   define an entry\n",
+                    "  ls [regex]      list by name         ld [regex]   list by date\n",
+                    "  mv <name> <new>     rename / move      rm <name>    remove\n",
+                    "  comment <name> [text]                  set or clear the comment\n",
+                    "\n",
+                    "passwords\n",
+                    "  enc <name>        show the generated password\n",
+                    "  gen[N] <name>     N numbered variants; name ends in G.. (all) or X.. (random)\n",
+                    "  pass <name> [pw]  cache a master / override for an entry's subtree\n",
+                    "  unpass <name>     forget a cached password   (unpass /  = the root master)\n",
+                    "  correct <name>    trust this password's hash  uncorrect <name>  untrust it\n",
+                    "\n",
+                    "catalog\n",
+                    "  dump              print the catalog          ls            list it\n",
+                    "  save [target]     write it (file / localStorage key / |command)\n",
+                    "  source <target>   load it                    set <key> <val>   config\n",
+                    "\n",
+                    "modes  R regular  C camel  N nospace  H hex  B base64  D decimal   (U.. = UPPER)"
+                ).to_string());
             }
             Command::Mv(name, folder) => self.cmd_mv(&out, &name, &folder),
             Command::Error(error) => {

@@ -3,8 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#1b4161" />
+    <meta name="theme-color" content="#0a2540" />
     <title>LesS/KEY — password generator</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png" />
+    <link rel="icon" href="./assets/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+    <link rel="manifest" href="./assets/site.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,8 +22,9 @@
     <header class="site">
       <div class="wrap nav">
         <a class="brand" href="./">
-          <span class="enso" aria-hidden="true"></span>
+          <img class="enso" src="./assets/enso.png" width="36" height="36" alt="" aria-hidden="true" />
           <span class="wordmark">LesS/KEY</span>
+          <span class="tagline">password generator</span>
         </a>
         <span class="nav-spacer"></span>
         <button class="btn ghost" id="importBtn">Import</button>
@@ -27,32 +33,82 @@
     </header>
 
     <main class="wrap">
+      <!-- About / how it works (collapsible) -->
+      <details class="about" id="about">
+        <summary>
+          <span class="about-badge">Help</span>
+          <span>What is LesS/KEY &amp; how it works</span>
+          <span class="about-hint">click to open</span>
+          <span class="about-toggle" aria-hidden="true"></span>
+        </summary>
+        <div class="about-body">
+          <p>
+            LesS/KEY is a password manager that <strong>stores no passwords</strong>. It
+            <strong>re-generates</strong> each one on demand from your single
+            <em>master password</em> plus the <em>name</em> of the account. The same name +
+            master always produce the same password — so there is nothing secret to leak,
+            sync, or back up, and you only ever remember one phrase.
+          </p>
+          <div class="about-grid">
+            <div>
+              <h4>Quick password</h4>
+              <p>
+                Type an account name and your master phrase — the password appears instantly,
+                masked. Click it to reveal, or press <strong>Copy</strong>. <strong>Store</strong>
+                remembers the <em>name</em> (never the password) in this browser.
+              </p>
+            </div>
+            <div>
+              <h4>Console</h4>
+              <p>
+                The full command line — type <code>help</code> for every command. Your list of
+                names lives only in this browser (localStorage); use <strong>Export</strong> /
+                <strong>Import</strong> to move it (e.g. to and from a Notion page).
+              </p>
+            </div>
+            <div>
+              <h4>Naming rules</h4>
+              <p>
+                After a name you can add a length and a mode — <code>R</code> words,
+                <code>C</code> camel, <code>H</code> hex, <code>B</code> base64, <code>D</code>
+                digits (<code>U…</code> = upper). E.g. <code>github 20R</code>.
+              </p>
+            </div>
+          </div>
+          <p class="about-note">
+            Runs the real hel engine compiled to WebAssembly — the exact same generator as the
+            command-line tool. Nothing is ever sent to a server.
+          </p>
+        </div>
+      </details>
+
       <!-- Quick generate -->
       <section class="card">
         <div class="eyebrow">Generate</div>
         <h2>Quick password</h2>
         <p class="hint">
           Deterministic — the same name + master always regenerate the same
-          password. Nothing secret is stored; this entry is not added to your
-          catalog.
+          password. The result updates live as you type. Nothing is stored unless
+          you press <strong>Store</strong>.
         </p>
-        <div class="grid2">
+        <div class="fields">
           <div class="field">
             <label for="qname">Name (+ optional rules)</label>
-            <input type="text" id="qname" placeholder="exa91   or   exa91 20R 99 2020-01-01" autocomplete="off" spellcheck="false" autofocus />
+            <input type="text" id="qname" placeholder="github    or    github 20R 99 2024-01-01" autocomplete="off" spellcheck="false" autofocus />
           </div>
           <div class="field">
             <label for="master">Master password</label>
             <input type="password" id="master" placeholder="your master phrase" autocomplete="off" />
           </div>
         </div>
-        <div class="row">
-          <button class="btn" id="show">Show</button>
-          <button class="btn ghost" id="copy">Copy</button>
-        </div>
-        <div class="secret-line">
+        <div class="result">
           <span class="tag">result</span>
-          <span id="qsecret"><span class="secret"></span></span>
+          <span class="secret" id="qsecret" title="click to reveal"></span>
+          <span class="len" id="qlen"></span>
+          <span class="actions">
+            <button class="btn small" id="copy">Copy</button>
+            <button class="btn ghost small" id="store">Store</button>
+          </span>
         </div>
       </section>
 
@@ -64,8 +120,7 @@
           The full hel command line — <code>ls</code>, <code>add</code>,
           <code>enc</code>, <code>gen</code>, <code>comment</code>,
           <code>correct</code>, <code>help</code>, … Your catalog persists in this
-          browser (localStorage). <code>enc</code>/<code>gen</code> output is
-          masked — click to reveal.
+          browser (localStorage). Generated passwords are masked — click to reveal.
         </p>
         <div class="console-out" id="cout"></div>
         <div class="console-in">
@@ -107,8 +162,24 @@
       </div>
     </div>
 
+    <!-- Password prompt modal (for the `pass` command) -->
+    <div class="modal-bg" id="passModal">
+      <div class="modal">
+        <h3 id="passTitle">Set password</h3>
+        <p class="hint">Cache a master/parent password for this name (used by <code>enc</code> in its subtree). Kept in memory only.</p>
+        <div class="field">
+          <label for="passInput">Password</label>
+          <input type="password" id="passInput" autocomplete="off" />
+        </div>
+        <div class="row">
+          <button class="btn" id="passOk">Set</button>
+          <button class="btn ghost" id="passCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module">
-      import init, { hel_init, hel_command, hel_load_script } from "./pkg/helwasm.js";
+      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name } from "./pkg/helwasm.js";
 
       const $ = (s) => document.querySelector(s);
       const masterEl = () => document.getElementById("master");
@@ -127,10 +198,7 @@
       // ---- helpers ----
       const persist = () => hel_command("save " + CATALOG_KEY);
       const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const isSecretCmd = (cmd) => {
-        const v = cmd.trim().split(/\s+/)[0];
-        return v === "enc" || v === "gen";
-      };
+      const stripNoise = (out) => out.split("\n").filter((l) => l && !/^(warning|error):/.test(l));
 
       let toastT;
       function toast(msg) {
@@ -159,55 +227,141 @@
         return s;
       }
 
-      // ---- quick generate (stateless: never pollutes the stored catalog) ----
+      // ---- quick generate (live; stateless unless Store) ----
       let lastSecret = "";
-      function quickShow() {
+      function quickGen(silent) {
         const spec = $("#qname").value.trim();
-        if (!spec) return toast("Enter a name");
-        if (!masterEl().value) return toast("Enter the master password");
-        const name = spec.split(/\s+/)[0];
+        const master = masterEl().value;
+        const sec = $("#qsecret");
+        const lenEl = $("#qlen");
+        sec.classList.remove("revealed");
+        if (!spec || !master) {
+          sec.textContent = "";
+          lenEl.textContent = "";
+          lastSecret = "";
+          return;
+        }
+        // The entry name is NOT always the first token — a leading prefix
+        // (e.g. `*P0 test1 …`) means the name is the next word. Parse it.
+        const name = hel_parse_name(spec);
+        if (!name) {
+          sec.textContent = "";
+          lenEl.textContent = "";
+          lastSecret = "";
+          return;
+        }
+        // hel caches the root master in secrets["/"]; clear it so the live result
+        // always reflects the current master field (not a stale cached value).
+        hel_command("unpass /");
         let out = hel_command("enc " + name);
         if (/not found/.test(out)) {
           hel_command("add " + spec);
           out = hel_command("enc " + name);
           hel_command("rm " + name);
         }
-        const pw = out.split("\n").filter((l) => l && !/^(warning|error):/.test(l)).pop() || "";
+        hel_command("unpass /");
+        const pw = stripNoise(out).pop() || "";
         lastSecret = pw;
-        const slot = $("#qsecret");
-        slot.innerHTML = "";
-        slot.appendChild(secretSpan(pw));
-        if (!pw) toast("No output");
+        sec.textContent = pw;
+        lenEl.textContent = pw ? "len " + pw.length : "";
+        if (!pw && !silent) toast("No output");
+      }
+      function quickStore() {
+        const spec = $("#qname").value.trim();
+        if (!spec) return toast("Enter a name");
+        const name = hel_parse_name(spec) || spec.split(/\s+/)[0];
+        const out = hel_command("add " + spec);
+        persist();
+        appendLine('<span class="muted"># stored ' + esc(name) + "</span>");
+        toast(/^(error|warning)/m.test(out) ? out.split("\n")[0] : "Stored " + name);
       }
 
       // ---- console ----
+      // Scroll to the bottom after layout (rAF) so the view always follows output.
+      function scrollBottom() {
+        const out = $("#cout");
+        requestAnimationFrame(() => { out.scrollTop = out.scrollHeight; });
+      }
       function appendLine(html, cls) {
         const out = $("#cout");
         const div = document.createElement("div");
         if (cls) div.className = cls;
         div.innerHTML = html;
         out.appendChild(div);
-        out.scrollTop = out.scrollHeight;
+        scrollBottom();
       }
-      function appendSecret(text) {
+      function appendNode(node) {
         const out = $("#cout");
         const div = document.createElement("div");
-        div.appendChild(secretSpan(text));
+        div.appendChild(node);
         out.appendChild(div);
-        out.scrollTop = out.scrollHeight;
+        scrollBottom();
+      }
+      // gen data line: {:>3} {:>36} {:>4} {}  → key(0..3) ' ' pass(4..40) ' ' len(41..45) ' ' name(46..)
+      // Return the column split so we mask ONLY the password (never the header).
+      function parseGenLine(line) {
+        if (line.length < 46) return null;
+        const lenStr = line.slice(41, 45).trim();
+        if (!/^\d+$/.test(lenStr)) return null; // header "Len" → not numeric → plain
+        const len = parseInt(lenStr, 10);
+        if (len <= 0 || len > 36) return null;
+        return { prefix: line.slice(0, 40 - len), secret: line.slice(40 - len, 40), suffix: line.slice(40) };
       }
       function consoleRun(cmd) {
         appendLine('<span class="cmd">&gt; ' + esc(cmd) + "</span>");
         const out = hel_command(cmd);
         persist();
-        if (out) {
-          const secret = isSecretCmd(cmd);
-          for (const line of out.split("\n")) {
-            if (/^(warning|error):/.test(line)) appendLine(esc(line), "err");
-            else if (secret && line.trim() && !line.startsWith("add ")) appendSecret(line);
-            else appendLine(esc(line) || "&nbsp;");
+        if (!out) return;
+        const verb = cmd.trim().split(/\s+/)[0];
+        const isGen = /^gen\d*$/.test(verb); // gen, gen3, gen10, …
+        const isEnc = verb === "enc";
+        for (const line of out.split("\n")) {
+          if (/^(warning|error):/.test(line)) {
+            appendLine(esc(line), "err");
+          } else if (isGen) {
+            const p = parseGenLine(line);
+            if (!p) { appendLine(esc(line) || "&nbsp;"); continue; }
+            const frag = document.createDocumentFragment();
+            frag.appendChild(document.createTextNode(p.prefix));
+            frag.appendChild(secretSpan(p.secret));
+            frag.appendChild(document.createTextNode(p.suffix));
+            appendNode(frag);
+          } else if (isEnc && line.trim() && !line.startsWith("add ")) {
+            appendNode(secretSpan(line));
+          } else {
+            appendLine(esc(line) || "&nbsp;");
           }
         }
+      }
+
+      // ---- pass overlay (a browser can't block for input, so collect the
+      //      password in a modal, then run the long form `pass <name> <pw>`) ----
+      let passPending = null;
+      function openPassOverlay(name) {
+        passPending = name;
+        $("#passTitle").textContent = 'Password for "' + name + '"';
+        $("#passInput").value = "";
+        $("#passModal").classList.add("show");
+        setTimeout(() => $("#passInput").focus(), 30);
+      }
+      function submitPass() {
+        const name = passPending;
+        passPending = null;
+        const pw = $("#passInput").value;
+        $("#passModal").classList.remove("show");
+        $("#passInput").value = "";
+        if (name == null) return;
+        appendLine('<span class="cmd">&gt; pass ' + esc(name) + "</span>");
+        if (!pw) {
+          appendLine('<span class="muted"># cancelled</span>');
+          return;
+        }
+        const out = hel_command("pass " + name + " " + pw); // long form, no prompt
+        persist();
+        if (out && out.trim()) {
+          for (const l of out.split("\n")) appendLine(esc(l), /^(warning|error):/.test(l) ? "err" : null);
+        }
+        appendLine('<span class="muted"># password cached for ' + esc(name) + "</span>");
       }
 
       // ---- boot ----
@@ -216,16 +370,79 @@
         hel_init();
         if (localStorage.getItem("hel:" + CATALOG_KEY)) hel_command("source " + CATALOG_KEY);
 
-        $("#show").onclick = quickShow;
+        // remember the About panel's open/closed state across visits
+        const about = $("#about");
+        const aboutState = localStorage.getItem("hel:_about_open");
+        if (aboutState !== null) about.open = aboutState === "1";
+        about.addEventListener("toggle", () => localStorage.setItem("hel:_about_open", about.open ? "1" : "0"));
+
+        // live generation
+        let liveT;
+        const live = () => {
+          clearTimeout(liveT);
+          liveT = setTimeout(() => quickGen(true), 70);
+        };
+        $("#qname").addEventListener("input", live);
+        $("#master").addEventListener("input", live);
+        $("#qname").addEventListener("keydown", (e) => e.key === "Enter" && quickGen(false));
+        // On blur, rewrite the name field to the canonical form hel parsed it as
+        // (name + mode + seq + date + comment), so you see exactly what was used.
+        $("#qname").addEventListener("blur", () => {
+          const spec = $("#qname").value.trim();
+          if (!spec) return;
+          const norm = hel_parse(spec);
+          if (norm && norm !== spec) {
+            $("#qname").value = norm;
+            quickGen(true);
+          }
+        });
+        $("#qsecret").addEventListener("click", () => $("#qsecret").classList.toggle("revealed"));
         $("#copy").onclick = () => (lastSecret ? copyText(lastSecret) : toast("Nothing to copy"));
-        $("#qname").addEventListener("keydown", (e) => e.key === "Enter" && quickShow());
+        $("#store").onclick = quickStore;
+
+        // pass overlay wiring
+        $("#passOk").onclick = submitPass;
+        $("#passInput").addEventListener("keydown", (e) => e.key === "Enter" && submitPass());
+        $("#passCancel").onclick = () => {
+          passPending = null;
+          $("#passModal").classList.remove("show");
+          $("#passInput").value = "";
+        };
 
         const ci = $("#cin");
+        // command history with Up/Down (persisted across reloads)
+        const HKEY = "_console_history";
+        const history = JSON.parse(localStorage.getItem("hel:" + HKEY) || "[]");
+        let hi = history.length; // pointer; === length means "current draft"
+        let draft = "";
+        const moveCaretEnd = () => requestAnimationFrame(() => ci.setSelectionRange(ci.value.length, ci.value.length));
         ci.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
-            const v = ci.value;
-            if (v.trim()) consoleRun(v);
+            const v = ci.value.trim();
             ci.value = "";
+            if (!v) return;
+            if (history[history.length - 1] !== v) history.push(v);
+            if (history.length > 300) history.shift();
+            localStorage.setItem("hel:" + HKEY, JSON.stringify(history));
+            hi = history.length;
+            draft = "";
+            const pm = v.match(/^pass\s+(\S+)\s*$/); // `pass <name>` → ask in an overlay
+            if (pm) { openPassOverlay(pm[1]); return; }
+            consoleRun(v);
+          } else if (e.key === "ArrowUp") {
+            if (hi > 0) {
+              if (hi === history.length) draft = ci.value;
+              ci.value = history[--hi];
+              e.preventDefault();
+              moveCaretEnd();
+            }
+          } else if (e.key === "ArrowDown") {
+            if (hi < history.length) {
+              hi++;
+              ci.value = hi === history.length ? draft : history[hi];
+              e.preventDefault();
+              moveCaretEnd();
+            }
           }
         });
 
@@ -243,11 +460,15 @@
           $("#importText").value = "";
         };
         $("#exportBtn").onclick = () => {
-          $("#exportText").value = hel_command("dump -");
+          $("#exportText").value = hel_command("dump"); // `dump` prints the catalog
           $("#exportModal").classList.add("show");
         };
         $("#exportClose").onclick = () => $("#exportModal").classList.remove("show");
         $("#exportCopy").onclick = () => copyText($("#exportText").value);
+        // click backdrop closes modals
+        document.querySelectorAll(".modal-bg").forEach((bg) =>
+          bg.addEventListener("click", (e) => e.target === bg && bg.classList.remove("show"))
+        );
 
         appendLine('<span class="muted"># LesS/KEY ready — runs the real hel core via WASM. Try: help</span>');
       }

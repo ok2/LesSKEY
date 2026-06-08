@@ -49,6 +49,51 @@ export function hel_load_script(script) {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
 }
+
+/**
+ * Parse a password spec (e.g. `exa91` or `exa91 20R 99 2020-01-01`) and return
+ * the canonical normalized form hel actually uses (name + mode + seq + date +
+ * comment), without touching state. Returns the input unchanged if it does not
+ * parse. Used by the UI to rewrite the name field on blur.
+ * @param {string} spec
+ * @returns {string}
+ */
+export function hel_parse(spec) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(spec, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.hel_parse(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Parse a spec and return just the entry name hel resolves it to. Handles a
+ * leading prefix (e.g. `*P0 test1 …` → `test1`), which a naive first-token
+ * split would get wrong. Falls back to the first whitespace token.
+ * @param {string} spec
+ * @returns {string}
+ */
+export function hel_parse_name(spec) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(spec, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.hel_parse_name(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

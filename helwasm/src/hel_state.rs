@@ -23,6 +23,29 @@ pub fn hel_command(cmd: String) -> String {
     lkprint.out.output().join("\n")
 }
 
+/// Parse a password spec (e.g. `exa91` or `exa91 20R 99 2020-01-01`) and return
+/// the canonical normalized form hel actually uses (name + mode + seq + date +
+/// comment), without touching state. Returns the input unchanged if it does not
+/// parse. Used by the UI to rewrite the name field on blur.
+#[wasm_bindgen]
+pub fn hel_parse(spec: String) -> String {
+    match command_parser::name(&spec) {
+        Ok(p) => p.to_string().trim().to_string(),
+        Err(_) => spec,
+    }
+}
+
+/// Parse a spec and return just the entry name hel resolves it to. Handles a
+/// leading prefix (e.g. `*P0 test1 …` → `test1`), which a naive first-token
+/// split would get wrong. Falls back to the first whitespace token.
+#[wasm_bindgen]
+pub fn hel_parse_name(spec: String) -> String {
+    match command_parser::name(&spec) {
+        Ok(p) => p.name,
+        Err(_) => spec.split_whitespace().next().unwrap_or("").to_string(),
+    }
+}
+
 /// Run a whole multi-line script (every `add …` line, `set …`, etc.) against the
 /// shared state in one call. Used to bulk-import a pasted catalog (e.g. the text
 /// of the Notion page) and to load the persisted catalog from localStorage.

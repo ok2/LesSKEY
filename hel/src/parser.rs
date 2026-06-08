@@ -37,13 +37,19 @@ peg::parser! {
         { Password::new(None, pn, pl, pm, ps, pd, pc) }
         rule mname() -> Password = &(word() _ word() _ num()? mode() _ date()) pr:word() _ pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(Some(pr), pn, pl, pm, 99, pd, pc) }
+        // prefix + name + [len]mode  (no seq/date) -> defaults seq 99, date now
+        rule npname() -> Password = &(word() _ word() _ num()? mode()) pr:word() _ pn:word() _ pl:num()? pm:mode()
+        { Password::new(Some(pr), pn, pl, pm, 99, Date::now(), None) }
         rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(None, pn, pl, pm, 99, pd, pc) }
         rule nname() -> Password = &(word() _ num()? mode()) pn:word() _ pl:num()? pm:mode()
         { Password::new(None, pn, pl, pm, 99, Date::now(), None) }
+        // prefix + name only -> defaults mode R, seq 99, date now
+        rule qpname() -> Password = &(word() _ word()) pr:word() _ pn:word()
+        { Password::new(Some(pr), pn, None, Mode::Regular, 99, Date::now(), None) }
         rule qname() -> Password = &(word()) pn:word()
         { Password::new(None, pn, None, Mode::NoSpaceCamel, 99, Date::now(), None) }
-        pub rule name() -> Password = name:(jname() / pname() / mname() / sname() / nname() / qname())? {?
+        pub rule name() -> Password = name:(jname() / pname() / mname() / npname() / sname() / nname() / qpname() / qname())? {?
             match name { Some(n) => Ok(n), None => Err("failed to parse password description") }
         }
 
