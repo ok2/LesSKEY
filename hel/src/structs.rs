@@ -3,6 +3,7 @@ use num_integer::Integer;
 use parking_lot::Mutex;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
@@ -44,6 +45,33 @@ lazy_static! {
             _ => home::dir().join(".hel_dump").into_boxed_path(),
         }
     };
+    /// Runtime configuration set via the `set <key> <value>` command (e.g. from
+    /// `~/.helrc`). Lets the user keep settings like `hel_dump` and
+    /// `hel_notion_token` in the init script instead of environment variables.
+    /// Keys are stored lowercase; `config_get` falls back to the uppercased
+    /// environment variable, and `config_envs` exports the map (uppercased) into
+    /// child processes spawned by the pipe/source plumbing.
+    pub static ref CONFIG: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+}
+
+/// Store a runtime config value under its lowercased key.
+pub fn config_set(key: &str, value: &str) {
+    CONFIG.lock().insert(key.to_lowercase(), value.to_string());
+}
+
+/// Look up a config value: runtime `set` map first, then the uppercased env var.
+pub fn config_get(key: &str) -> Option<String> {
+    if let Some(v) = CONFIG.lock().get(&key.to_lowercase()) {
+        return Some(v.clone());
+    }
+    std::env::var(key.to_uppercase()).ok()
+}
+
+/// The runtime config as `(UPPERCASE_KEY, value)` pairs, for injection into the
+/// environment of child processes (so `set hel_notion_token …` reaches a spawned
+/// `hel store`/`hel load`).
+pub fn config_envs() -> Vec<(String, String)> {
+    CONFIG.lock().iter().map(|(k, v)| (k.to_uppercase(), v.clone())).collect()
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -75,6 +103,7 @@ pub enum Command<'a> {
     PasteBuffer(String),
     Source(String),
     Dump(Option<String>),
+    Set(String, String),
     Comment(Name, Comment),
     Error(LKErr<'a>),
     Noop,
@@ -100,6 +129,7 @@ impl<'a> PartialEq for Command<'a> {
             (Command::PasteBuffer(s), Command::PasteBuffer(o)) => s == o,
             (Command::Source(s), Command::Source(o)) => s == o,
             (Command::Dump(s), Command::Dump(o)) => s == o,
+            (Command::Set(a, b), Command::Set(x, y)) => a == x && b == y,
             (Command::Comment(a, b), Command::Comment(x, y)) => a == x && b == y,
             (Command::Error(s), Command::Error(o)) => s == o,
             (Command::Noop, Command::Noop) => true,
@@ -130,6 +160,9 @@ impl<'a> std::fmt::Display for Command<'a> {
             Command::Source(s) => write!(f, "source {}", s),
             Command::Dump(None) => write!(f, "dump"),
             Command::Dump(Some(s)) => write!(f, "dump {}", s),
+            // Value redacted: a `set` may carry a secret (e.g. hel_notion_token)
+            // and this Display feeds the history entry.
+            Command::Set(a, _) => write!(f, "set {} ***", a),
             Command::Comment(a, None) => write!(f, "comment {}", a),
             Command::Comment(a, Some(b)) => write!(f, "comment {} {}", a, b),
             Command::Error(s) => write!(f, "error {}", s),

@@ -12,6 +12,9 @@ pub struct LK {
     pub db: HashMap<Name, PasswordRef>,
     pub ls: HashMap<String, PasswordRef>,
     pub secrets: HashMap<Name, String>,
+    /// Serialized dump as of the last load (`source`) or save (`dump`). Used to
+    /// show a `< removed` / `> added` diff on save so removals are noticed.
+    pub last_dump: Option<String>,
 }
 
 impl LK {
@@ -20,6 +23,7 @@ impl LK {
             db: HashMap::new(),
             ls: HashMap::new(),
             secrets: HashMap::new(),
+            last_dump: None,
         }
     }
 

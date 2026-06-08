@@ -206,6 +206,9 @@ pub mod editor {
 pub fn call_cmd_with_input(cmd: &str, args: &Vec<String>, input: &str) -> io::Result<String> {
     let mut cmd = Command::new(cmd)
         .args(args)
+        // Export runtime `set …` config (uppercased) into the child, so e.g.
+        // `set hel_notion_token …` reaches a spawned `hel store`/`hel load`.
+        .envs(crate::structs::config_envs())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;

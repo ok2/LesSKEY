@@ -10,7 +10,7 @@ use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
-use crate::structs::{LKOut, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::structs::{config_get, config_set, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::editor::password;
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
 
@@ -233,6 +233,7 @@ impl<'a> LKEval<'a> {
     }
 
     pub fn cmd_source(&self, out: &LKOut, source: &String) -> bool {
+        out.o(format!("source {}", source));
         let script = if source.trim().ends_with("|") {
             let (cmd, args) = match get_cmd_args_from_command(source.trim().trim_end_matches('|')) {
                 Ok(c) => c,
@@ -272,15 +273,54 @@ impl<'a> LKEval<'a> {
                 out.e(format!("error: {}", e.to_string()));
             }
         };
+        // Baseline for the next save diff: the just-loaded state is the new
+        // "previously persisted" reference.
+        let snapshot = self.serialize_db();
+        self.state.lock().borrow_mut().last_dump = Some(snapshot);
         false
     }
 
+    /// All entries serialized as sorted `add …` lines (the dump format).
+    fn serialize_db(&self) -> String {
+        let mut vals: Vec<PasswordRef> = self.state.lock().borrow().db.values().cloned().collect();
+        vals.sort_by(|a, b| a.lock().borrow().name.cmp(&b.lock().borrow().name));
+        vals.iter()
+            .map(|v| format!("add {}", v.lock().borrow().to_string()))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+
+    /// Emit a `< removed` / `> added` line diff of `new` against the last saved/
+    /// loaded snapshot (set-based, so dump ordering doesn't matter). No-op until
+    /// a baseline exists.
+    fn show_dump_diff(&self, out: &LKOut, new: &str) {
+        let prev = self.state.lock().borrow().last_dump.clone();
+        if let Some(prev) = prev {
+            use std::collections::BTreeSet;
+            let p: BTreeSet<&str> = prev.lines().filter(|l| !l.is_empty()).collect();
+            let n: BTreeSet<&str> = new.lines().filter(|l| !l.is_empty()).collect();
+            for l in p.difference(&n) {
+                out.o(format!("< {}", l));
+            }
+            for l in n.difference(&p) {
+                out.o(format!("> {}", l));
+            }
+        }
+    }
+
+    pub fn cmd_set(&self, out: &LKOut, key: &String, value: &String) {
+        config_set(key, value);
+        // Confirm without echoing the value — it may be a secret.
+        out.o(format!("set {}", key.to_lowercase()));
+    }
+
     pub fn cmd_dump(&self, out: &LKOut, script: &Option<String>) {
-        let script = match script {
-            Some(p) => p,
-            None => DUMP_FILE.to_str().unwrap(),
+        // Default dump target: `set hel_dump …` > $HEL_DUMP > ~/.hel_dump.
+        let script: String = match script {
+            Some(p) => p.clone(),
+            None => config_get("hel_dump").unwrap_or_else(|| DUMP_FILE.to_str().unwrap().to_string()),
         };
-        let script = shellexpand::full(script).unwrap().into_owned();
+        let script = shellexpand::full(&script).unwrap().into_owned();
         fn save_dump(data: &HashMap<Name, PasswordRef>, script: &String) -> std::io::Result<()> {
             let file = fs::File::create(script)?;
             let mut writer = BufWriter::new(file);
@@ -299,15 +339,8 @@ impl<'a> LKEval<'a> {
                     return;
                 }
             };
-            let data = self
-                .state
-                .lock()
-                .borrow()
-                .db
-                .values()
-                .map(|v| format!("add {}", v.lock().borrow().to_string()))
-                .collect::<Vec<String>>()
-                .join("\n");
+            let data = self.serialize_db();
+            self.show_dump_diff(out, &data);
             let output = match call_cmd_with_input(&cmd, &args, data.as_str()) {
                 Ok(o) => o,
                 Err(e) => {
@@ -315,6 +348,7 @@ impl<'a> LKEval<'a> {
                     return;
                 }
             };
+            self.state.lock().borrow_mut().last_dump = Some(data);
             if output.len() > 0 {
                 out.e(format!("Passwords saved to command {} and got following output:", cmd));
                 out.o(output);
@@ -328,8 +362,15 @@ impl<'a> LKEval<'a> {
                 out.o(format!("add {}", pwd.lock().borrow().to_string()))
             }
         } else {
-            match save_dump(&self.state.lock().borrow().db, &script) {
-                Ok(()) => out.o(format!("Passwords saved to file {}", script)),
+            let data = self.serialize_db();
+            self.show_dump_diff(out, &data);
+            // Bind first so the immutable borrow drops before the borrow_mut below.
+            let res = save_dump(&self.state.lock().borrow().db, &script);
+            match res {
+                Ok(()) => {
+                    self.state.lock().borrow_mut().last_dump = Some(data);
+                    out.o(format!("Passwords saved to file {}", script));
+                }
                 Err(e) => out.e(format!("error: failed to dump passwords to {}: {}", script, e.to_string())),
             };
         }
@@ -339,7 +380,8 @@ impl<'a> LKEval<'a> {
     where
         F: Fn(&PasswordRef, &PasswordRef) -> std::cmp::Ordering,
     {
-        let re = match Regex::new(&filter) {
+        // Case-insensitive search; an explicit (?-i) in the filter still wins.
+        let re = match Regex::new(&format!("(?i){}", filter)) {
             Ok(re) => re,
             Err(e) => {
                 out.e(format!("error: failed to parse re: {:?}", e));
