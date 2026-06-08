@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a2540" />
-    <title>LesS/KEY — password generator</title>
+    <title>LesS/KEY password generator</title>
     <meta name="description" content="A password manager that stores nothing and never talks to a server. Passwords are generated entirely in your browser with WebAssembly; your master password and your data never leave your device." />
     <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png" />
@@ -16,7 +16,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="LesS/KEY" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <!-- Fonts are self-hosted in style.css (./assets/fonts/) — no external requests. -->
+    <!-- Fonts are self-hosted in style.css (./assets/fonts/); no external requests. -->
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -47,25 +47,25 @@
           <p>
             LesS/KEY is a password manager that <strong>stores no passwords</strong>. It
             <strong>re-generates</strong> each one on demand from your single
-            <em>master password</em> plus the <em>name</em> of the account. The same name +
-            master always produce the same password — so there is nothing secret to leak,
+            <em>master password</em> plus the <em>name</em> of the account. The same name and
+            master always produce the same password, so there is nothing secret to leak,
             sync, or back up, and you only ever remember one phrase. By default each password
-            is six short, memorable words — the <em>correct horse battery staple</em> idea from
-            <a href="https://xkcd.com/936/" target="_blank" rel="noopener">xkcd 936</a> — built on
+            is six short, memorable words. That is the <em>correct horse battery staple</em> idea
+            from <a href="https://xkcd.com/936/" target="_blank" rel="noopener">xkcd 936</a>, built on
             the classic S/KEY one-time-password scheme (<a href="https://www.rfc-editor.org/rfc/rfc2289" target="_blank" rel="noopener">RFC 2289</a>).
           </p>
           <p class="about-privacy">
-            <strong>Private by design.</strong> Everything happens on your device. Your master
+            <strong>Nothing leaves your device.</strong> Everything happens locally. Your master
             password and the passwords it generates are never sent anywhere, never stored on a
-            server, and never logged — there is no account, no sync, and no tracking. The app is a
-            single page plus a WebAssembly module, with its fonts bundled in; once it has loaded,
+            server, and never logged. There is no account, no sync, and no tracking. The app is a
+            single page plus a WebAssembly module, with its fonts bundled in. Once it has loaded,
             it makes no network requests at all.
           </p>
           <div class="about-grid">
             <div>
               <h4>Quick password</h4>
               <p>
-                Type an account name and your master phrase — the password appears instantly,
+                Type an account name and your master phrase. The password appears instantly,
                 masked. Click it to reveal, or press <strong>Copy</strong>. <strong>Store</strong>
                 remembers the <em>name</em> (never the password) in this browser.
               </p>
@@ -73,24 +73,24 @@
             <div>
               <h4>Console</h4>
               <p>
-                The full command line — type <code>help</code> for every command. Your list of
-                names lives only in this browser (localStorage), never on a server; use
-                <strong>Export</strong> / <strong>Import</strong> to move it yourself (e.g. to and
-                from a Notion page).
+                The full command line. Type <code>help</code> for every command. Your list of
+                names lives only in this browser (localStorage), never on a server. Use
+                <strong>Export</strong> or <strong>Import</strong> to move it yourself (for example,
+                to and from a Notion page).
               </p>
             </div>
             <div>
               <h4>Naming rules</h4>
               <p>
-                After a name you can add a length and a mode — <code>R</code> six memorable words
-                (the default), <code>C</code> camel, <code>H</code> hex, <code>B</code> base64,
-                <code>D</code> digits (<code>U…</code> = upper). E.g. <code>github 20R</code>.
+                After a name you can add a length and a mode. <code>R</code> is six memorable words
+                (the default); <code>C</code> camel; <code>H</code> hex; <code>B</code> base64;
+                <code>D</code> digits (<code>U…</code> = upper). For example, <code>github 20R</code>.
               </p>
             </div>
           </div>
           <p class="about-note">
-            Runs the real hel engine compiled to WebAssembly — the exact same generator as the
-            command-line tool. No server, no account, no tracking — nothing to leak.
+            Runs the real hel engine compiled to WebAssembly, the exact same generator as the
+            command-line tool. No server, no account, no tracking, nothing to leak.
           </p>
         </div>
       </details>
@@ -100,10 +100,10 @@
         <div class="eyebrow">Generate</div>
         <h2>Quick password</h2>
         <p class="hint">
-          Deterministic — the same name + master always regenerate the same
-          password. The result updates live as you type, entirely in your browser —
-          your master and the generated password never leave this device. Nothing is
-          stored unless you press <strong>Store</strong>.
+          The same name and master always regenerate the same password. The result
+          updates live as you type, entirely in your browser. Your master and the
+          generated password never leave this device. Nothing is stored unless you
+          press <strong>Store</strong>.
         </p>
         <div class="fields">
           <div class="field">
@@ -131,10 +131,10 @@
         <div class="eyebrow">Console</div>
         <h2>All commands</h2>
         <p class="hint">
-          The full hel command line — <code>ls</code>, <code>add</code>,
+          The full hel command line: <code>ls</code>, <code>add</code>,
           <code>enc</code>, <code>gen</code>, <code>comment</code>,
           <code>correct</code>, <code>help</code>, … Your catalog persists in this
-          browser (localStorage). Generated passwords are masked — click to reveal.
+          browser (localStorage). Generated passwords are masked; click to reveal.
         </p>
         <div class="console-out" id="cout"></div>
         <div class="console-in">
@@ -145,8 +145,8 @@
     </main>
 
     <footer class="foot wrap">
-      A free tool by <a href="https://kaizenkodo.no" target="_blank" rel="noopener">Kaizenkodo</a> — kaizenkodo.no.
-      Runs the real hel core compiled to WebAssembly — same generator as the CLI.
+      A free tool by <a href="https://kaizenkodo.no" target="_blank" rel="noopener">Kaizenkodo</a> (kaizenkodo.no).
+      Runs the real hel core compiled to WebAssembly, the same generator as the CLI.
       Everything runs in your browser; nothing you type is ever sent to a server.
     </footer>
 
@@ -257,8 +257,8 @@
           lastSecret = "";
           return;
         }
-        // The entry name is NOT always the first token — a leading prefix
-        // (e.g. `*P0 test1 …`) means the name is the next word. Parse it.
+        // The entry name is NOT always the first token; a leading prefix
+        // (like `*P0 test1 …`) means the name is the next word. Parse it.
         const name = hel_parse_name(spec);
         if (!name) {
           sec.textContent = "";
@@ -486,7 +486,7 @@
           bg.addEventListener("click", (e) => e.target === bg && bg.classList.remove("show"))
         );
 
-        appendLine('<span class="muted"># LesS/KEY ready — runs entirely in your browser (WASM); nothing is sent to a server. Try: help</span>');
+        appendLine('<span class="muted"># LesS/KEY ready. Runs entirely in your browser (WASM); nothing is sent to a server. Try: help</span>');
       }
       boot();
     </script>

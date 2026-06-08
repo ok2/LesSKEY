@@ -1,5 +1,5 @@
 {
-  "name": "LesS/KEY — password generator",
+  "name": "LesS/KEY password generator",
   "short_name": "LesS/KEY",
   "description": "A password manager that stores nothing and runs entirely in your browser. A free tool by Kaizenkodo.",
   "id": "../",
@@ -9,7 +9,17 @@
   "theme_color": "#0a2540",
   "background_color": "#f4f0e8",
   "icons": [
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
