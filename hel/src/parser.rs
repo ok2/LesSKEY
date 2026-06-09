@@ -85,7 +85,10 @@ peg::parser! {
                 _ => Err("unknown mode"),
             }
         }
-        rule mode() -> Mode = m:(umode() / rmode()) { m }
+        // A mode is a whole token: it must not be followed by another letter/digit, or
+        // a single letter would be stolen from a longer word (e.g. the `n` of `now`,
+        // making `name r now` mis-parse as name=`r`, mode=`n` instead of date=`now`).
+        rule mode() -> Mode = m:(umode() / rmode()) !['0'..='9' | 'a'..='z' | 'A'..='Z'] { m }
 
         rule noop_cmd() -> Command<'input> = ("#" [' '..='~']*)? { Command::Noop }
         rule help_cmd() -> Command<'input> = "help" { Command::Help }
@@ -267,6 +270,24 @@ add t3 C 99 2022-12-14
         assert_eq!(p3.prefix, Some("#W9".to_string()));
         assert_eq!(p3.name, "github");
         assert_eq!(p3.comment, None);
+    }
+
+    #[test]
+    fn parse_mode_word_boundary_test() {
+        // `now` must be the date, not mode `n` + leftover `ow`: name=testG mode=Regular.
+        let g = command_parser::name("testG r now").unwrap();
+        assert_eq!(g.name, "testG");
+        assert_eq!(g.prefix, None);
+        assert_eq!(g.mode, Mode::Regular);
+        // the whole gen command parses with no trailing-input error (so `now` was
+        // consumed as the date, not as a mode that left `ow` dangling)
+        assert!(command_parser::cmd("gen testG r now").is_ok());
+        assert!(command_parser::cmd("gen testG R now").is_ok());
+        // a length+mode token still works right up to a word boundary
+        let h = command_parser::name("github 20R").unwrap();
+        assert_eq!(h.name, "github");
+        assert_eq!(h.length, Some(20));
+        assert_eq!(h.mode, Mode::Regular);
     }
 
     #[test]
