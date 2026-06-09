@@ -66,8 +66,10 @@
               <h4>Quick password</h4>
               <p>
                 Type an account name and your master phrase. The password appears instantly,
-                masked. Click it to reveal, or press <strong>Copy</strong>. <strong>Store</strong>
-                remembers the <em>name</em> (never the password) in this browser.
+                masked; click it (or the master) to reveal. Press <strong>Copy</strong>, or
+                <strong>Store</strong> to remember the <em>name</em> (never the password).
+                Click <strong>Mark correct</strong> once and the right master shows in colour,
+                so a typo stays black.
               </p>
             </div>
             <div>
@@ -85,6 +87,8 @@
                 After a name you can add a length and a mode. <code>R</code> is six memorable words
                 (the default); <code>C</code> camel; <code>H</code> hex; <code>B</code> base64;
                 <code>D</code> digits (<code>U…</code> = upper). For example, <code>github 20R</code>.
+                End a name with <code>^folder</code> to derive it from a parent; you still type only
+                your one master and the whole chain is computed.
               </p>
             </div>
           </div>
@@ -100,10 +104,11 @@
         <div class="eyebrow">Generate</div>
         <h2>Quick password</h2>
         <p class="hint">
-          The same name and master always make the same password, generated live in
-          your browser. Nothing is saved unless you press <strong>Store</strong>, and
-          then only in this browser on your device, never on a server. The app never
-          communicates with a server at all.
+          The same name and master always make the same password, computed live in your
+          browser. Your master is kept in memory for this tab only, never written to
+          storage, and the app never talks to a server. <strong>Store</strong> saves
+          just the entry name; <strong>Mark correct</strong> saves only a one-way hash,
+          both on this device.
         </p>
         <div class="fields">
           <div class="field">
@@ -112,7 +117,7 @@
           </div>
           <div class="field">
             <label for="master">Master password</label>
-            <input type="text" id="master" class="mask" placeholder="your master phrase" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" />
+            <input type="text" id="master" class="mask" placeholder="your master phrase" title="click to show or hide" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" />
           </div>
         </div>
         <div class="result">
@@ -120,6 +125,7 @@
           <span class="secret" id="qsecret" title="click to reveal"></span>
           <span class="len" id="qlen"></span>
           <span class="actions">
+            <button class="btn ghost small" id="markCorrect" title="Remember this master as correct on this device, so the right master shows in colour." disabled>Mark correct</button>
             <button class="btn small" id="copy">Copy</button>
             <button class="btn ghost small" id="store">Store</button>
           </span>
@@ -202,7 +208,13 @@
       const CATALOG_KEY = "hel_catalog";
 
       // ---- host imports (wasm calls these by bare name → must be globals) ----
-      window.hel_get_password = () => (masterEl() ? masterEl().value : "") || "";
+      // The master field is the single ROOT master. hel's read_master prompts "/" for
+      // the root and the parent's NAME when climbing a ^parent chain; by answering only
+      // the "/" prompt (and "" otherwise) we force hel to climb to the root and COMPUTE
+      // every intermediate parent from one master — exactly what the CLI does, and the
+      // same for the easy form and the console below, so both give identical results.
+      window.hel_get_password = (prompt) =>
+        prompt === "/" ? (masterEl() ? masterEl().value : "") || "" : "";
       window.hel_rnd_range = (s, e) => {
         if (e <= s) return s;
         const r = crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
@@ -243,44 +255,76 @@
         return s;
       }
 
-      // ---- quick generate (live; stateless unless Store) ----
+      // ---- quick generate ----
+      // Pure sugar over the same engine the console drives: it only ever runs
+      // hel_command(...) and DERIVES what it shows from the engine, so you can switch
+      // to the console at any time and keep working on the same catalog, the same
+      // cached master, and the same correct hashes. No private form-only state — the
+      // master lives only in hel's in-memory `secrets` (never written to storage);
+      // only the one-way "correct" hash is persisted on the device.
       let lastSecret = "";
+      let appliedMaster = null; // last master value pushed to the engine (debounce hint)
+      function refreshCorrectBtn(enabled, isCorrect) {
+        const b = $("#markCorrect");
+        if (!b) return;
+        b.disabled = !enabled;
+        b.classList.toggle("is-correct", !!enabled && !!isCorrect);
+        b.textContent = enabled && isCorrect ? "Correct ✓" : "Mark correct";
+        b.title = enabled && isCorrect
+          ? "This master is remembered as correct on this device. Click to forget it."
+          : "Remember this master as correct on this device, so the right master shows in colour.";
+      }
       function quickGen(silent) {
         const spec = $("#qname").value.trim();
-        const master = masterEl().value;
         const sec = $("#qsecret");
         const lenEl = $("#qlen");
         sec.classList.remove("revealed");
-        if (!spec || !master) {
-          sec.textContent = "";
-          lenEl.textContent = "";
-          lastSecret = "";
-          return;
-        }
         // The entry name is NOT always the first token; a leading prefix
         // (like `*P0 test1 …`) means the name is the next word. Parse it.
-        const name = hel_parse_name(spec);
+        const name = spec ? hel_parse_name(spec) : "";
         if (!name) {
-          sec.textContent = "";
-          lenEl.textContent = "";
-          lastSecret = "";
+          sec.textContent = ""; sec.classList.remove("correct");
+          lenEl.textContent = ""; lastSecret = "";
+          refreshCorrectBtn(false, false);
           return;
         }
-        // hel caches the root master in secrets["/"]; clear it so the live result
-        // always reflects the current master field (not a stale cached value).
-        hel_command("unpass /");
+        const master = masterEl().value;
+        // A new master in the field is authoritative: forget the cached chain so every
+        // parent recomputes from it. An empty field keeps whatever master is stored, so
+        // names still generate without re-typing it (the auto-`pass`). `unpass` (no arg)
+        // is the same command you can type in the console.
+        if (master !== appliedMaster) {
+          if (master.length) hel_command("unpass");
+          appliedMaster = master;
+        }
         let out = hel_command("enc " + name);
-        if (/not found/.test(out)) {
+        if (/^error: name .* not found/m.test(out)) { // unstored leaf: ephemeral add/enc/rm
           hel_command("add " + spec);
           out = hel_command("enc " + name);
           hel_command("rm " + name);
         }
-        hel_command("unpass /");
         const pw = stripNoise(out).pop() || "";
+        // Colour = "is the master correct?" — derived from the engine so it reflects
+        // `correct /` / `unpass /` typed in the console too. `enc /` re-emits the root
+        // correctness check; needs secrets["/"], which the gen above just set.
+        const rootChk = hel_command("enc /");
+        const haveRoot = !/^error:/m.test(rootChk);
+        const masterOK = haveRoot && !/warning: password \/ is not marked as correct/.test(rootChk);
         lastSecret = pw;
         sec.textContent = pw;
+        sec.classList.toggle("correct", !!pw && masterOK);
         lenEl.textContent = pw ? "len " + pw.length : "";
+        refreshCorrectBtn(!!pw && haveRoot, masterOK);
         if (!pw && !silent) toast("No output");
+      }
+      function toggleCorrect() {
+        const b = $("#markCorrect");
+        if (!b || b.disabled) return;
+        const wasCorrect = b.classList.contains("is-correct");
+        // Store / remove the root-master hash on the device (same as the console).
+        hel_command(wasCorrect ? "uncorrect /" : "correct /");
+        quickGen(true);
+        toast(wasCorrect ? "Master no longer marked correct" : "Master marked correct");
       }
       function quickStore() {
         const spec = $("#qname").value.trim();
@@ -413,8 +457,11 @@
           }
         });
         $("#qsecret").addEventListener("click", () => $("#qsecret").classList.toggle("revealed"));
+        // Click the master field to show what you typed; click again to re-mask.
+        $("#master").addEventListener("click", () => $("#master").classList.toggle("revealed"));
         $("#copy").onclick = () => (lastSecret ? copyText(lastSecret) : toast("Nothing to copy"));
         $("#store").onclick = quickStore;
+        $("#markCorrect").onclick = toggleCorrect;
 
         // pass overlay wiring
         $("#passOk").onclick = submitPass;

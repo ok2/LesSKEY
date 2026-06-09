@@ -38,17 +38,20 @@ peg::parser! {
         rule mname() -> Password = &(word() _ word() _ num()? mode() _ date()) pr:word() _ pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(Some(pr), pn, pl, pm, 99, pd, pc) }
         // prefix + name + [len]mode  (no seq/date) -> defaults seq 99, date now
-        rule npname() -> Password = &(word() _ word() _ num()? mode()) pr:word() _ pn:word() _ pl:num()? pm:mode()
-        { Password::new(Some(pr), pn, pl, pm, 99, Date::now(), None) }
+        rule npname() -> Password = &(word() _ word() _ num()? mode()) pr:word() _ pn:word() _ pl:num()? pm:mode() pc:comment()?
+        { Password::new(Some(pr), pn, pl, pm, 99, Date::now(), pc) }
         rule sname() -> Password = &(word() _ num()? mode() _ date()) pn:word() _ pl:num()? pm:mode() _ pd:date() pc:comment()?
         { Password::new(None, pn, pl, pm, 99, pd, pc) }
-        rule nname() -> Password = &(word() _ num()? mode()) pn:word() _ pl:num()? pm:mode()
-        { Password::new(None, pn, pl, pm, 99, Date::now(), None) }
-        // prefix + name only -> defaults mode R, seq 99, date now
-        rule qpname() -> Password = &(word() _ word()) pr:word() _ pn:word()
-        { Password::new(Some(pr), pn, None, Mode::Regular, 99, Date::now(), None) }
-        rule qname() -> Password = &(word()) pn:word()
-        { Password::new(None, pn, None, Mode::Regular, 99, Date::now(), None) }
+        rule nname() -> Password = &(word() _ num()? mode()) pn:word() _ pl:num()? pm:mode() pc:comment()?
+        { Password::new(None, pn, pl, pm, 99, Date::now(), pc) }
+        // prefix + name (+ optional comment) -> defaults mode R, seq 99, date now.
+        // A `^parent` token is never a name, so a `^`-leading second word fails here and
+        // falls through to qname, which keeps it as the comment (the parent marker).
+        rule qpname() -> Password = &(word() _ word()) pr:word() _ pn:$(!"^" ['!'..='~']+) pc:comment()?
+        { Password::new(Some(pr), pn.to_string(), None, Mode::Regular, 99, Date::now(), pc) }
+        // name (+ optional comment) -> e.g. `github` or `github ^work`
+        rule qname() -> Password = pn:word() pc:comment()?
+        { Password::new(None, pn, None, Mode::Regular, 99, Date::now(), pc) }
         pub rule name() -> Password = name:(jname() / pname() / mname() / npname() / sname() / nname() / qpname() / qname())? {?
             match name { Some(n) => Ok(n), None => Err("failed to parse password description") }
         }
@@ -107,7 +110,7 @@ peg::parser! {
         rule pass_cmd() -> Command<'input> = p:(pass_long_cmd() / pass_short_cmd()) { p }
         rule correct_cmd() -> Command<'input> = "correct" _ name:word() { Command::Correct(name) }
         rule uncorrect_cmd() -> Command<'input> = "uncorrect" _ name:word() { Command::Uncorrect(name) }
-        rule unpass_cmd() -> Command<'input> = "unpass" _ name:word() { Command::UnPass(name) }
+        rule unpass_cmd() -> Command<'input> = "unpass" name:(_ w:word() { w })? { Command::UnPass(name) }
         rule enc_cmd() -> Command<'input> = "enc" _ name:word() { Command::Enc(name) }
         rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
         rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
@@ -243,6 +246,27 @@ add t3 C 99 2022-12-14
                 Command::Noop
             ])
         );
+    }
+
+    #[test]
+    fn parse_short_parent_test() {
+        // `name ^parent` (no mode/date): name is the name, ^parent stays in the comment
+        // for fix_hierarchy — it must NOT be read as prefix+name.
+        let p = command_parser::name("x ^acc").unwrap();
+        assert_eq!(p.name, "x");
+        assert_eq!(p.prefix, None);
+        assert_eq!(p.comment, Some("^acc".to_string()));
+        // `name [len]mode ^parent` keeps the parent in the comment too
+        let p2 = command_parser::name("x 20R ^acc").unwrap();
+        assert_eq!(p2.name, "x");
+        assert_eq!(p2.length, Some(20));
+        assert_eq!(p2.mode, Mode::Regular);
+        assert_eq!(p2.comment, Some("^acc".to_string()));
+        // a real prefix + name (second word not ^-led) still parses as prefix+name
+        let p3 = command_parser::name("#W9 github").unwrap();
+        assert_eq!(p3.prefix, Some("#W9".to_string()));
+        assert_eq!(p3.name, "github");
+        assert_eq!(p3.comment, None);
     }
 
     #[test]

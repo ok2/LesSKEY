@@ -133,9 +133,13 @@ impl<'a> LKEval<'a> {
             Command::Set(key, value) => { to_history = false; self.cmd_set(&out, key, value); }
             Command::Pass(name, None) => self.cmd_pass(&out, &name, &None),
             Command::Pass(name, pass) => { to_history = false; self.cmd_pass(&out, &name, &pass); },
-            Command::UnPass(name) => match self.state.lock().borrow_mut().secrets.remove(name) {
+            Command::UnPass(Some(name)) => match self.state.lock().borrow_mut().secrets.remove(name) {
                 Some(_) => out.o(format!("Removed saved password for {}", name)),
                 None => out.e(format!("error: saved password for {} not found", name)),
+            },
+            Command::UnPass(None) => {
+                self.state.lock().borrow_mut().secrets.clear();
+                out.o("forgot all cached masters".to_string());
             },
             Command::Correct(name) => self.cmd_correct(&out, name, true, None),
             Command::Uncorrect(name) => self.cmd_correct(&out, name, false, None),
@@ -156,7 +160,7 @@ impl<'a> LKEval<'a> {
                     "  enc <name>        show the generated password\n",
                     "  gen[N] <name>     N numbered variants; name ends in G.. (all) or X.. (random)\n",
                     "  pass <name> [pw]  cache a master / override for an entry's subtree\n",
-                    "  unpass <name>     forget a cached password   (unpass /  = the root master)\n",
+                    "  unpass [name]     forget a cached password   (unpass /  = root; unpass  = all)\n",
                     "  correct <name>    trust this password's hash  uncorrect <name>  untrust it\n",
                     "\n",
                     "catalog\n",
