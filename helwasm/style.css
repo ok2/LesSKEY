@@ -72,6 +72,9 @@ body {
 .backlink { display: inline-flex; align-items: center; gap: 5px; flex: none; font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--muted); text-decoration: none; white-space: nowrap; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); }
 .backlink:hover { color: var(--ocean); border-color: var(--ocean); background: rgba(27, 65, 97, 0.05); }
 .backlink .arr { font-size: 14px; line-height: 1; }
+/* Installed as a home-screen app (standalone launch): hide the back-to-site link. */
+@media (display-mode: standalone) { .backlink { display: none; } }
+html.standalone .backlink { display: none; }
 
 /* Eyebrow label */
 .eyebrow {

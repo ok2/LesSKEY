@@ -206,6 +206,14 @@
       const masterEl = () => document.getElementById("master");
       const CATALOG_KEY = "hel_catalog";
 
+      // When launched as an installed app (home-screen / standalone), hide the
+      // "back to Kaizenkodo" link — leaving the app context would feel wrong there.
+      // navigator.standalone covers older iOS; the media query covers the rest.
+      if (window.navigator.standalone === true ||
+          (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)) {
+        document.documentElement.classList.add("standalone");
+      }
+
       // ---- host imports (wasm calls these by bare name → must be globals) ----
       // The master field is the single ROOT master. hel's read_master prompts "/" for
       // the root and the parent's NAME when climbing a ^parent chain; by answering only
