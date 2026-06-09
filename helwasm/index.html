@@ -66,10 +66,10 @@
               <h4>Quick password</h4>
               <p>
                 Type an account name and your master phrase. The password appears instantly,
-                masked; click it (or the master) to reveal. Press <strong>Copy</strong>, or
-                <strong>Store</strong> to remember the <em>name</em> (never the password).
-                <strong>Mark correct</strong> remembers this name and master, so that exact
-                combination shows in colour; anything unmarked or mistyped stays black.
+                masked; click it (or the master) to reveal, or press <strong>Copy</strong>.
+                The save button steps from <strong>Store</strong> (file the <em>name</em>, never
+                the password) to <strong>Correct</strong> (confirm this name + master); once
+                confirmed the result shows in colour, so a typo stays black.
               </p>
             </div>
             <div>
@@ -106,8 +106,8 @@
         <p class="hint">
           The same name and master always make the same password, computed live in your
           browser. Your master is kept in memory for this tab only, never written to
-          storage, and the app never talks to a server. <strong>Store</strong> saves
-          just the entry name; <strong>Mark correct</strong> saves only a one-way hash,
+          storage, and the app never talks to a server. The button saves just the entry
+          name (<strong>Store</strong>), then a one-way hash (<strong>Correct</strong>),
           both on this device.
         </p>
         <div class="fields">
@@ -125,9 +125,8 @@
           <span class="secret" id="qsecret" title="click to reveal"></span>
           <span class="len" id="qlen"></span>
           <span class="actions">
-            <button class="btn ghost small" id="markCorrect" title="Remember this master as correct on this device, so the right master shows in colour." disabled>Mark correct</button>
+            <button class="btn ghost small" id="saveBtn" title="Save this name in your catalog" disabled>Store</button>
             <button class="btn small" id="copy">Copy</button>
-            <button class="btn ghost small" id="store">Store</button>
           </span>
         </div>
       </section>
@@ -265,24 +264,32 @@
       // only the one-way "correct" hash is persisted on the device.
       let lastSecret = "";
       let appliedMaster = null; // last master value pushed to the engine (debounce hint)
-      function refreshStoreBtn(name) {
-        const b = $("#store");
+      // One progressive button. It walks the natural states, each a real engine fact:
+      //   not in catalog            -> "Store"     (click: add the name)
+      //   in catalog, master shown  -> "Correct"   (click: mark this name+master correct)
+      //   verified                  -> "Correct ✓" (click: unmark)
+      //   in catalog, no master     -> "Stored ✓"  (disabled: nothing to verify yet)
+      function refreshSaveBtn(name, hasResult, correct) {
+        const b = $("#saveBtn");
         if (!b) return;
-        const exists = name ? !!hel_entry(name) : false;
-        b.classList.toggle("is-stored", exists);
-        b.disabled = exists || !name;
-        b.textContent = exists ? "Stored ✓" : "Store";
-        b.title = exists ? "This name is already in your catalog" : "Save this name in this browser";
-      }
-      function refreshCorrectBtn(enabled, isCorrect) {
-        const b = $("#markCorrect");
-        if (!b) return;
-        b.disabled = !enabled;
-        b.classList.toggle("is-correct", !!enabled && !!isCorrect);
-        b.textContent = enabled && isCorrect ? "Correct ✓" : "Mark correct";
-        b.title = enabled && isCorrect
-          ? "This name and master are remembered as correct on this device. Click to forget."
-          : "Remember this name and master as correct on this device, so this combination shows in colour.";
+        const stored = name ? !!hel_entry(name) : false;
+        b.classList.remove("is-correct", "is-stored");
+        if (!name) {
+          b.disabled = true; b.textContent = "Store";
+          b.title = "Save this name in your catalog";
+        } else if (!stored) {
+          b.disabled = false; b.textContent = "Store";
+          b.title = "Save this name in your catalog";
+        } else if (correct) {
+          b.disabled = false; b.textContent = "Correct ✓"; b.classList.add("is-correct");
+          b.title = "This name + master is verified. Click to unmark.";
+        } else if (hasResult) {
+          b.disabled = false; b.textContent = "Correct";
+          b.title = "Mark this name + master correct, so it shows in colour";
+        } else {
+          b.disabled = true; b.textContent = "Stored ✓"; b.classList.add("is-stored");
+          b.title = "In your catalog. Type the master to mark it correct.";
+        }
       }
       function quickGen(silent) {
         const spec = $("#qname").value.trim();
@@ -295,8 +302,7 @@
         if (!name) {
           sec.textContent = ""; sec.classList.remove("correct");
           lenEl.textContent = ""; lastSecret = "";
-          refreshCorrectBtn(false, false);
-          refreshStoreBtn("");
+          refreshSaveBtn("", false, false);
           return;
         }
         const master = masterEl().value;
@@ -325,45 +331,31 @@
         sec.textContent = pw;
         sec.classList.toggle("correct", correct);
         lenEl.textContent = pw ? "len " + pw.length : "";
-        refreshCorrectBtn(!!pw, correct);
-        refreshStoreBtn(name);
+        refreshSaveBtn(name, !!pw, correct);
         if (!pw && !silent) toast("No output");
       }
-      function toggleCorrect() {
-        const b = $("#markCorrect");
+      // One click advances the progressive button by one step (Store → Correct →
+      // unmark). Each step is the same command you could type in the console.
+      function saveStep() {
+        const b = $("#saveBtn");
         if (!b || b.disabled) return;
         const spec = $("#qname").value.trim();
         const name = hel_parse_name(spec);
         if (!name) return;
-        const marking = !b.classList.contains("is-correct");
-        const exists = !!hel_entry(name);
-        // Marking correct also STORES the name (you only confirm things you keep), so
-        // the entry stays in the catalog. The hash is SHA1(name‖password) on the device.
-        if (marking) {
-          if (!exists) hel_command("add " + spec); // store it if new
-          hel_command("correct " + name);
+        const stored = !!hel_entry(name);
+        if (!stored) {
+          hel_command("add " + spec); // file the name in the catalog
           persist();
-        } else if (exists) {
-          hel_command("uncorrect " + name); // drop the hash; keep the stored name
+          appendLine('<span class="muted"># stored ' + esc(name) + "</span>");
+          toast("Stored " + name);
+        } else if (b.classList.contains("is-correct")) {
+          hel_command("uncorrect " + name); // stored entry → removes the hash
+          toast("No longer marked correct");
         } else {
-          // not stored (e.g. a stale hash): wrap add/rm so uncorrect can recompute the
-          // password to remove the right hash, without leaving the entry behind.
-          hel_command("add " + spec);
-          hel_command("uncorrect " + name);
-          hel_command("rm " + name);
+          hel_command("correct " + name); // stored + master present → verify (colour)
+          toast("Marked correct");
         }
         quickGen(true);
-        toast(marking ? "Marked correct & stored" : "No longer marked correct");
-      }
-      function quickStore() {
-        const spec = $("#qname").value.trim();
-        if (!spec) return toast("Enter a name");
-        const name = hel_parse_name(spec) || spec.split(/\s+/)[0];
-        const out = hel_command("add " + spec);
-        persist();
-        appendLine('<span class="muted"># stored ' + esc(name) + "</span>");
-        refreshStoreBtn(name);
-        toast(/^(error|warning)/m.test(out) ? out.split("\n")[0] : "Stored " + name);
       }
 
       // ---- console ----
@@ -495,8 +487,7 @@
         // Click the master field to show what you typed; click again to re-mask.
         $("#master").addEventListener("click", () => $("#master").classList.toggle("revealed"));
         $("#copy").onclick = () => (lastSecret ? copyText(lastSecret) : toast("Nothing to copy"));
-        $("#store").onclick = quickStore;
-        $("#markCorrect").onclick = toggleCorrect;
+        $("#saveBtn").onclick = saveStep;
 
         // pass overlay wiring
         $("#passOk").onclick = submitPass;
