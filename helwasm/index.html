@@ -521,6 +521,14 @@
         $("#qsecret").addEventListener("click", () => $("#qsecret").classList.toggle("revealed"));
         // Click the master field to show what you typed; click again to re-mask.
         $("#master").addEventListener("click", () => $("#master").classList.toggle("revealed"));
+        // Enter in the master field copies the result, like pressing Copy (the keydown
+        // gesture lets the clipboard write through). Generate first so it's current.
+        $("#master").addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          quickGen(false);
+          if (lastSecret) copyText(lastSecret); else toast("Nothing to copy");
+        });
         $("#copy").onclick = () => (lastSecret ? copyText(lastSecret) : toast("Nothing to copy"));
         $("#saveBtn").onclick = saveStep;
 
