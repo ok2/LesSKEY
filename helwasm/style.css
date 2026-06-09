@@ -72,9 +72,12 @@ body {
 .backlink { display: inline-flex; align-items: center; gap: 5px; flex: none; font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--muted); text-decoration: none; white-space: nowrap; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); }
 .backlink:hover { color: var(--ocean); border-color: var(--ocean); background: rgba(27, 65, 97, 0.05); }
 .backlink .arr { font-size: 14px; line-height: 1; }
-/* Installed as a home-screen app (standalone launch): hide the back-to-site link. */
+/* Installed as a home-screen app (standalone launch): hide the back-to-site link.
+   With it gone there's room, so show the wordmark again even on narrow phones
+   (higher specificity than the <=540px hide, so it wins regardless of order). */
 @media (display-mode: standalone) { .backlink { display: none; } }
 html.standalone .backlink { display: none; }
+html.standalone .wordmark { display: inline; }
 
 /* Eyebrow label */
 .eyebrow {
