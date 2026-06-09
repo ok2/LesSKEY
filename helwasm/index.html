@@ -68,8 +68,8 @@
                 Type an account name and your master phrase. The password appears instantly,
                 masked; click it (or the master) to reveal. Press <strong>Copy</strong>, or
                 <strong>Store</strong> to remember the <em>name</em> (never the password).
-                Click <strong>Mark correct</strong> once and the right master shows in colour,
-                so a typo stays black.
+                <strong>Mark correct</strong> remembers this name and master, so that exact
+                combination shows in colour; anything unmarked or mistyped stays black.
               </p>
             </div>
             <div>
@@ -227,6 +227,7 @@
       const persist = () => hel_command("save " + CATALOG_KEY);
       const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const stripNoise = (out) => out.split("\n").filter((l) => l && !/^(warning|error):/.test(l));
+      const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
       let toastT;
       function toast(msg) {
@@ -271,8 +272,8 @@
         b.classList.toggle("is-correct", !!enabled && !!isCorrect);
         b.textContent = enabled && isCorrect ? "Correct ✓" : "Mark correct";
         b.title = enabled && isCorrect
-          ? "This master is remembered as correct on this device. Click to forget it."
-          : "Remember this master as correct on this device, so the right master shows in colour.";
+          ? "This name and master are remembered as correct on this device. Click to forget."
+          : "Remember this name and master as correct on this device, so this combination shows in colour.";
       }
       function quickGen(silent) {
         const spec = $("#qname").value.trim();
@@ -304,27 +305,38 @@
           hel_command("rm " + name);
         }
         const pw = stripNoise(out).pop() || "";
-        // Colour = "is the master correct?" — derived from the engine so it reflects
-        // `correct /` / `unpass /` typed in the console too. `enc /` re-emits the root
-        // correctness check; needs secrets["/"], which the gen above just set.
-        const rootChk = hel_command("enc /");
-        const haveRoot = !/^error:/m.test(rootChk);
-        const masterOK = haveRoot && !/warning: password \/ is not marked as correct/.test(rootChk);
+        // Colour = "is THIS name + master marked correct?" — read straight from the
+        // leaf's own correct-check in the enc output (per name+password, not per master),
+        // so changing the name (or mistyping the master) drops back to black until you
+        // mark that exact combination. `correct` typed in the console is reflected too.
+        const warnRe = new RegExp("^warning: password " + escapeRegExp(name) + " is not marked as correct$", "m");
+        const correct = !!pw && !warnRe.test(out);
         lastSecret = pw;
         sec.textContent = pw;
-        sec.classList.toggle("correct", !!pw && masterOK);
+        sec.classList.toggle("correct", correct);
         lenEl.textContent = pw ? "len " + pw.length : "";
-        refreshCorrectBtn(!!pw && haveRoot, masterOK);
+        refreshCorrectBtn(!!pw, correct);
         if (!pw && !silent) toast("No output");
       }
       function toggleCorrect() {
         const b = $("#markCorrect");
         if (!b || b.disabled) return;
-        const wasCorrect = b.classList.contains("is-correct");
-        // Store / remove the root-master hash on the device (same as the console).
-        hel_command(wasCorrect ? "uncorrect /" : "correct /");
+        const spec = $("#qname").value.trim();
+        const name = hel_parse_name(spec);
+        if (!name) return;
+        const verb = b.classList.contains("is-correct") ? "uncorrect " : "correct ";
+        // Mark / unmark THIS name + master on the device (stores SHA1(name‖password)).
+        // The entry may be ephemeral (not Stored), so wrap add/rm around it so
+        // correct/uncorrect can recompute the password to hash — same as the console.
+        if (/^error: name .* not found/m.test(hel_command("enc " + name))) {
+          hel_command("add " + spec);
+          hel_command(verb + name);
+          hel_command("rm " + name);
+        } else {
+          hel_command(verb + name);
+        }
         quickGen(true);
-        toast(wasCorrect ? "Master no longer marked correct" : "Master marked correct");
+        toast(verb === "correct " ? "Marked correct" : "No longer marked correct");
       }
       function quickStore() {
         const spec = $("#qname").value.trim();
