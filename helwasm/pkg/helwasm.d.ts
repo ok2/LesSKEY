@@ -7,6 +7,14 @@
 export function hel_command(cmd: string): string;
 
 /**
+ * Look up an entry by its exact name and return its canonical stored form
+ * (`name [len]mode seq date comment ^parent`), or "" if it is not in the catalog.
+ * Read-only. The UI uses this to detect "already stored" and to use the real stored
+ * spec (its mode/seq/date/parent) instead of the bare name the user typed.
+ */
+export function hel_entry(name: string): string;
+
+/**
  * Call once at page load: routes Rust panics to the browser console with a
  * readable message + stack instead of an opaque "unreachable" trap.
  */
@@ -38,11 +46,12 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly hel_init: () => void;
     readonly hel_command: (a: number, b: number) => [number, number];
+    readonly hel_entry: (a: number, b: number) => [number, number];
     readonly hel_load_script: (a: number, b: number) => [number, number];
     readonly hel_parse: (a: number, b: number) => [number, number];
     readonly hel_parse_name: (a: number, b: number) => [number, number];
+    readonly hel_init: () => void;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

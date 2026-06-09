@@ -46,6 +46,20 @@ pub fn hel_parse_name(spec: String) -> String {
     }
 }
 
+/// Look up an entry by its exact name and return its canonical stored form
+/// (`name [len]mode seq date comment ^parent`), or "" if it is not in the catalog.
+/// Read-only. The UI uses this to detect "already stored" and to use the real stored
+/// spec (its mode/seq/date/parent) instead of the bare name the user typed.
+#[wasm_bindgen]
+pub fn hel_entry(name: String) -> String {
+    let cell = STATE.lock();
+    let lk = cell.borrow();
+    match lk.db.get(&name).or_else(|| lk.ls.get(&name)) {
+        Some(p) => p.lock().borrow().to_string().trim().to_string(),
+        None => String::new(),
+    }
+}
+
 /// Run a whole multi-line script (every `add …` line, `set …`, etc.) against the
 /// shared state in one call. Used to bulk-import a pasted catalog (e.g. the text
 /// of the Notion page) and to load the persisted catalog from localStorage.

@@ -21,6 +21,29 @@ export function hel_command(cmd) {
 }
 
 /**
+ * Look up an entry by its exact name and return its canonical stored form
+ * (`name [len]mode seq date comment ^parent`), or "" if it is not in the catalog.
+ * Read-only. The UI uses this to detect "already stored" and to use the real stored
+ * spec (its mode/seq/date/parent) instead of the bare name the user typed.
+ * @param {string} name
+ * @returns {string}
+ */
+export function hel_entry(name) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.hel_entry(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Call once at page load: routes Rust panics to the browser console with a
  * readable message + stack instead of an opaque "unreachable" trap.
  */

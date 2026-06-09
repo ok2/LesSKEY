@@ -201,7 +201,7 @@
     </div>
 
     <script type="module">
-      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name } from "./pkg/helwasm.js";
+      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry } from "./pkg/helwasm.js";
 
       const $ = (s) => document.querySelector(s);
       const masterEl = () => document.getElementById("master");
@@ -265,6 +265,15 @@
       // only the one-way "correct" hash is persisted on the device.
       let lastSecret = "";
       let appliedMaster = null; // last master value pushed to the engine (debounce hint)
+      function refreshStoreBtn(name) {
+        const b = $("#store");
+        if (!b) return;
+        const exists = name ? !!hel_entry(name) : false;
+        b.classList.toggle("is-stored", exists);
+        b.disabled = exists || !name;
+        b.textContent = exists ? "Stored ✓" : "Store";
+        b.title = exists ? "This name is already in your catalog" : "Save this name in this browser";
+      }
       function refreshCorrectBtn(enabled, isCorrect) {
         const b = $("#markCorrect");
         if (!b) return;
@@ -287,6 +296,7 @@
           sec.textContent = ""; sec.classList.remove("correct");
           lenEl.textContent = ""; lastSecret = "";
           refreshCorrectBtn(false, false);
+          refreshStoreBtn("");
           return;
         }
         const master = masterEl().value;
@@ -316,6 +326,7 @@
         sec.classList.toggle("correct", correct);
         lenEl.textContent = pw ? "len " + pw.length : "";
         refreshCorrectBtn(!!pw, correct);
+        refreshStoreBtn(name);
         if (!pw && !silent) toast("No output");
       }
       function toggleCorrect() {
@@ -324,19 +335,25 @@
         const spec = $("#qname").value.trim();
         const name = hel_parse_name(spec);
         if (!name) return;
-        const verb = b.classList.contains("is-correct") ? "uncorrect " : "correct ";
-        // Mark / unmark THIS name + master on the device (stores SHA1(name‖password)).
-        // The entry may be ephemeral (not Stored), so wrap add/rm around it so
-        // correct/uncorrect can recompute the password to hash — same as the console.
-        if (/^error: name .* not found/m.test(hel_command("enc " + name))) {
-          hel_command("add " + spec);
-          hel_command(verb + name);
-          hel_command("rm " + name);
+        const marking = !b.classList.contains("is-correct");
+        const exists = !!hel_entry(name);
+        // Marking correct also STORES the name (you only confirm things you keep), so
+        // the entry stays in the catalog. The hash is SHA1(name‖password) on the device.
+        if (marking) {
+          if (!exists) hel_command("add " + spec); // store it if new
+          hel_command("correct " + name);
+          persist();
+        } else if (exists) {
+          hel_command("uncorrect " + name); // drop the hash; keep the stored name
         } else {
-          hel_command(verb + name);
+          // not stored (e.g. a stale hash): wrap add/rm so uncorrect can recompute the
+          // password to remove the right hash, without leaving the entry behind.
+          hel_command("add " + spec);
+          hel_command("uncorrect " + name);
+          hel_command("rm " + name);
         }
         quickGen(true);
-        toast(verb === "correct " ? "Marked correct" : "No longer marked correct");
+        toast(marking ? "Marked correct & stored" : "No longer marked correct");
       }
       function quickStore() {
         const spec = $("#qname").value.trim();
@@ -345,6 +362,7 @@
         const out = hel_command("add " + spec);
         persist();
         appendLine('<span class="muted"># stored ' + esc(name) + "</span>");
+        refreshStoreBtn(name);
         toast(/^(error|warning)/m.test(out) ? out.split("\n")[0] : "Stored " + name);
       }
 
@@ -462,7 +480,11 @@
         $("#qname").addEventListener("blur", () => {
           const spec = $("#qname").value.trim();
           if (!spec) return;
-          const norm = hel_parse(spec);
+          // If the name is already in the catalog, use its FULL stored spec (real
+          // mode/seq/date/parent), not a fresh default-extended parse of what was typed.
+          const name = hel_parse_name(spec);
+          const stored = name ? hel_entry(name) : "";
+          const norm = stored || hel_parse(spec);
           if (norm && norm !== spec) {
             $("#qname").value = norm;
             quickGen(true);
