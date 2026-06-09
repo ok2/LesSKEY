@@ -294,6 +294,24 @@
           b.title = "In your catalog. Type the master to mark it correct.";
         }
       }
+      // Shrink the result font just enough to keep it on one line on very narrow screens
+      // (iPhone) instead of wrapping. Falls back to wrapping only if even the floor size
+      // can't fit. Masking doesn't change width (mono disc = mono char), so reveal is safe.
+      function fitResult() {
+        const sec = $("#qsecret");
+        sec.style.fontSize = "";
+        if (!sec.textContent) return;
+        const avail = sec.clientWidth;
+        if (!avail) return;
+        const ws = sec.style.whiteSpace;
+        sec.style.whiteSpace = "nowrap";
+        const full = sec.scrollWidth;
+        sec.style.whiteSpace = ws;
+        if (full > avail) {
+          const base = parseFloat(getComputedStyle(sec).fontSize);
+          sec.style.fontSize = Math.max(11, Math.floor((base * avail) / full)) + "px";
+        }
+      }
       function quickGen(silent) {
         const spec = $("#qname").value.trim();
         const sec = $("#qsecret");
@@ -303,7 +321,7 @@
         // (like `*P0 test1 …`) means the name is the next word. Parse it.
         const name = spec ? hel_parse_name(spec) : "";
         if (!name) {
-          sec.textContent = ""; sec.classList.remove("correct");
+          sec.textContent = ""; sec.classList.remove("correct"); sec.style.fontSize = "";
           lenEl.textContent = ""; lastSecret = "";
           refreshSaveBtn("", false, false);
           return;
@@ -334,6 +352,7 @@
         sec.textContent = pw;
         sec.classList.toggle("correct", correct);
         lenEl.textContent = pw ? "len " + pw.length : "";
+        fitResult();
         refreshSaveBtn(name, !!pw, correct);
         if (!pw && !silent) toast("No output");
       }
@@ -470,6 +489,7 @@
         };
         $("#qname").addEventListener("input", live);
         $("#master").addEventListener("input", live);
+        window.addEventListener("resize", fitResult); // re-fit on rotate / width change
         $("#qname").addEventListener("keydown", (e) => e.key === "Enter" && quickGen(false));
         // On blur, rewrite the name field to the canonical form hel parsed it as
         // (name + mode + seq + date + comment), so you see exactly what was used.
