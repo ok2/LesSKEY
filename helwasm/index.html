@@ -490,7 +490,11 @@
         $("#qname").addEventListener("input", live);
         $("#master").addEventListener("input", live);
         window.addEventListener("resize", fitResult); // re-fit on rotate / width change
-        $("#qname").addEventListener("keydown", (e) => e.key === "Enter" && quickGen(false));
+        // Enter in the name field jumps to the master field (its blur then normalises
+        // the name and regenerates). Works with the iOS keyboard "return" key too.
+        $("#qname").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); $("#master").focus(); }
+        });
         // On blur, rewrite the name field to the canonical form hel parsed it as
         // (name + mode + seq + date + comment), so you see exactly what was used.
         $("#qname").addEventListener("blur", () => {
