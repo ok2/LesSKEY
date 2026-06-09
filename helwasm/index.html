@@ -75,10 +75,11 @@
             <div>
               <h4>Console</h4>
               <p>
-                The full command line. Type <code>help</code> for every command. Your list of
-                names lives only in this browser (localStorage), never on a server. Use
-                <strong>Export</strong> or <strong>Import</strong> to move it yourself (for example,
-                to and from a Notion page).
+                The full command line; type <code>help</code> for every command. It shares the
+                same catalog and session as the form above, so you can switch between them freely;
+                <code>pb</code> copies a command's output to the clipboard. Your list lives only in
+                this browser (localStorage); use <strong>Export</strong> or <strong>Import</strong>
+                to move it yourself (for example, to and from a Notion page).
               </p>
             </div>
             <div>
@@ -94,7 +95,8 @@
           </div>
           <p class="about-note">
             Runs the real hel engine compiled to WebAssembly, the exact same generator as the
-            command-line tool. No server, no account, no tracking, nothing to leak.
+            command-line tool. You can add it to your home screen and use it as an app. No server,
+            no account, no tracking, nothing to leak.
           </p>
         </div>
       </details>
@@ -104,11 +106,9 @@
         <div class="eyebrow">Generate</div>
         <h2>Quick password</h2>
         <p class="hint">
-          The same name and master always make the same password, computed live in your
-          browser. Your master is kept in memory for this tab only, never written to
-          storage, and the app never talks to a server. <strong>Store</strong> files the
-          entry (its name and rules, never the password); <strong>Correct</strong> adds a
-          one-way hash; both stay on this device.
+          Same name + master always make the same password, computed in your browser —
+          your master stays in memory only, never stored or sent. <strong>Store</strong>
+          saves the entry (never the password); <strong>Correct</strong> saves a one-way hash.
         </p>
         <div class="fields">
           <div class="field">
