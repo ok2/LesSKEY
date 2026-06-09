@@ -270,7 +270,9 @@ input.mask.revealed { -webkit-text-security: none; }
 .modal textarea:focus { border-color: var(--ocean); }
 .modal .row { display: flex; gap: 10px; margin-top: 14px; }
 
-.foot { color: var(--muted); font-family: var(--mono); font-size: 12px; text-align: center; padding: 8px 0 40px; }
+/* padding-block only: keep .wrap's inline gutter so the footer lines up with the
+   body cards instead of running to the window edge. */
+.foot { color: var(--muted); font-family: var(--mono); font-size: 12px; text-align: center; padding-block: 8px 40px; }
 .foot a { color: var(--ocean); text-decoration: none; border-bottom: 1px solid rgba(27, 65, 97, 0.3); }
 .foot a:hover { border-bottom-color: var(--ocean); }
 
