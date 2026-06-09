@@ -68,8 +68,10 @@ body {
 .wordmark { font-family: var(--disp); font-weight: 700; font-size: 22px; color: var(--ocean); letter-spacing: -0.01em; }
 .tagline { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
 .nav-spacer { flex: 1; }
-.byline { font-family: var(--mono); font-size: 11px; color: var(--muted); text-decoration: none; letter-spacing: 0.04em; border-bottom: 1px solid transparent; margin-left: 6px; align-self: center; }
-.byline:hover { color: var(--ocean); border-bottom-color: currentColor; }
+/* Always-visible link back to the main Kaizenkodo site. */
+.backlink { display: inline-flex; align-items: center; gap: 5px; flex: none; font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--muted); text-decoration: none; white-space: nowrap; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); }
+.backlink:hover { color: var(--ocean); border-color: var(--ocean); background: rgba(27, 65, 97, 0.05); }
+.backlink .arr { font-size: 14px; line-height: 1; }
 
 /* Eyebrow label */
 .eyebrow {
@@ -259,8 +261,10 @@ input.mask { -webkit-text-security: disc; }
 @media (max-width: 680px) {
   .fields { grid-template-columns: 1fr; align-items: stretch; }
   .nav { gap: 9px; height: 60px; }
-  .tagline, .byline { display: none; }
+  .tagline { display: none; }
   body { font-size: 15px; }
+  /* free space for the back link: the ensō icon alone carries the brand on phones */
+  .backlink { padding: 5px 9px; }
   /* result row stacks cleanly on phones: the password on its own full-width line,
      then a tidy meta line (result + len ........ Copy / Store). */
   .result { align-items: center; row-gap: 12px; }
@@ -269,3 +273,5 @@ input.mask { -webkit-text-security: disc; }
   .result .len { order: 3; margin-right: auto; }
   .result .actions { order: 4; margin-left: 0; }
 }
+/* On narrow phones drop the wordmark so the back link + ensō + buttons all fit. */
+@media (max-width: 540px) { .wordmark { display: none; } }
