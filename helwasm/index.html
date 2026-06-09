@@ -221,6 +221,9 @@
       };
       window.hel_storage_get = (k) => localStorage.getItem("hel:" + k);
       window.hel_storage_set = (k, v) => localStorage.setItem("hel:" + k, v);
+      // `pb` copies to the system clipboard. Fire-and-forget: it runs inside the Enter
+      // keypress handler, so the user-gesture requirement for clipboard write is met.
+      window.hel_clipboard_write = (text) => { try { navigator.clipboard.writeText(text); } catch (e) {} };
 
       // ---- helpers ----
       const persist = () => hel_command("save " + CATALOG_KEY);

@@ -14,6 +14,17 @@ use crate::utils::editor::password;
 #[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
 
+// In the browser `pb` copies through the host page's clipboard (navigator.clipboard)
+// instead of shelling out to pbcopy/xclip.
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::wasm_bindgen;
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = hel_clipboard_write)]
+    fn hel_clipboard_write(text: &str);
+}
+
 impl<'a> LKEval<'a> {
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
         match self.state.lock().borrow().ls.get(name) {
@@ -218,7 +229,8 @@ impl<'a> LKEval<'a> {
                     // In the browser the page provides a Copy button instead.
                     #[cfg(target_arch = "wasm32")]
                     {
-                        out.e("error: pb (clipboard copy) is not available in the browser; use the Copy button".to_string());
+                        hel_clipboard_write(&data);
+                        out.o(format!("Copied {} characters to the clipboard", data.chars().count()));
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     {

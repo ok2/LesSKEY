@@ -142,6 +142,9 @@ function __wbg_get_imports() {
             const ret = arg0.getTimezoneOffset();
             return ret;
         },
+        __wbg_hel_clipboard_write_efa8177dd67c65ec: function(arg0, arg1) {
+            hel_clipboard_write(getStringFromWasm0(arg0, arg1));
+        },
         __wbg_hel_get_password_271a2beac04c29db: function(arg0, arg1, arg2) {
             const ret = hel_get_password(getStringFromWasm0(arg1, arg2));
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
