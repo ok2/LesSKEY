@@ -440,6 +440,7 @@
         const pw = $("#passInput").value;
         $("#passModal").classList.remove("show");
         $("#passInput").value = "";
+        $("#cin").focus(); // return to the command line after the overlay closes
         if (name == null) return;
         appendLine('<span class="cmd">&gt; pass ' + esc(name) + "</span>");
         if (!pw) {
@@ -504,6 +505,7 @@
           passPending = null;
           $("#passModal").classList.remove("show");
           $("#passInput").value = "";
+          $("#cin").focus();
         };
 
         const ci = $("#cin");

@@ -181,13 +181,13 @@ input.mask.revealed { -webkit-text-security: none; }
 .btn.ghost { background: transparent; color: var(--ocean); }
 .btn.ghost:hover { background: rgba(27, 65, 97, 0.06); color: var(--ocean); border-color: var(--ocean); }
 .btn.small { padding: 7px 15px; font-size: 13px; }
-/* "Mark correct" toggle: filled ocean once the master is remembered-correct. */
-.btn.small.is-correct { background: var(--ocean); color: var(--cream); border-color: var(--ocean); }
+/* Confirmed states ("Correct ✓" / "Stored ✓"): same filled-ocean look for both. */
+.btn.small.is-correct,
+.btn.small.is-stored { background: var(--ocean); color: var(--cream); border-color: var(--ocean); }
 .btn.small.is-correct:hover { background: var(--deep); border-color: var(--deep); }
 .btn:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
-/* "Stored ✓": not an action (disabled), but shown as a confirmed ocean outline
-   rather than the dimmed disabled look. */
-.btn.small.is-stored { opacity: 1; background: transparent; color: var(--ocean); border-color: var(--ocean); }
+/* is-stored is disabled (re-storing is a no-op); keep it fully opaque, not dimmed. */
+.btn.small.is-stored { opacity: 1; }
 
 /* Quick-gen result row */
 .result {
