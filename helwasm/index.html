@@ -153,6 +153,7 @@
       A free tool by <a href="https://kaizenkodo.no" target="_blank" rel="noopener">Kaizenkodo</a> (kaizenkodo.no).
       Runs the real hel core compiled to WebAssembly, the same generator as the CLI.
       Everything runs in your browser; nothing you type is ever sent to a server.
+      <button class="ver" id="verBtn" type="button" title="What's new — changelog"></button>
     </footer>
 
     <div class="toast" id="toast"></div>
@@ -199,12 +200,46 @@
       </div>
     </div>
 
+    <!-- Changelog overlay (opened from the footer version badge) -->
+    <div class="modal-bg" id="changelogModal">
+      <div class="modal">
+        <h3>What's new</h3>
+        <p class="hint">Recent changes to LesS/KEY, newest first.</p>
+        <div class="changelog" id="changelogBody"></div>
+        <div class="row">
+          <button class="btn ghost" id="changelogClose">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module">
       import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry } from "./pkg/helwasm.js";
 
       const $ = (s) => document.querySelector(s);
       const masterEl = () => document.getElementById("master");
       const CATALOG_KEY = "hel_catalog";
+
+      // Single source of truth for the displayed version AND the changelog dialog.
+      // Newest first: CHANGELOG[0].version is the footer badge and gets the "Latest"
+      // flag. To cut a release, bump the top version and prepend an entry. Each change
+      // is { tag: "New" | "Improved", text }; `text` may hold inline <code> for command
+      // names (authored/trusted content, rendered as HTML). `title` = the release theme.
+      const CHANGELOG = [
+        { version: "1.0.0", date: "2026-06-10", title: "Keyboard-first, and installable", changes: [
+          { tag: "New", text: "Press Enter in the name field to jump to the master; Enter in the master generates and copies." },
+          { tag: "New", text: "Install LesS/KEY to your home screen and run it as a standalone app." },
+          { tag: "Improved", text: "Fresh ensō + key icon; the result shrinks to stay on one line on narrow phones." },
+        ] },
+        { version: "0.9.0", date: "2026-06-09", title: "A smarter catalog", changes: [
+          { tag: "New", text: "Quick password follows <code>^parent</code> chains, all computed from your one master." },
+          { tag: "New", text: "<code>pb</code> copies a command's output to the clipboard; help now lists every command." },
+          { tag: "Improved", text: "One progressive Store → Correct button; verified results show in colour." },
+        ] },
+        { version: "0.8.0", date: "2026-06-08", title: "Public launch", changes: [
+          { tag: "New", text: "Runs entirely in your browser via WebAssembly — nothing you type is ever sent to a server." },
+          { tag: "New", text: "Self-hosted fonts, installable and mobile-friendly; a bare name makes six memorable S/KEY words by default." },
+        ] },
+      ];
 
       // When launched as an installed app (home-screen / standalone), hide the
       // "back to Kaizenkodo" link — leaving the app context would feel wrong there.
@@ -477,6 +512,58 @@
         appendLine('<span class="muted"># password cached for ' + esc(name) + "</span>");
       }
 
+      // ---- changelog overlay ----
+      // Render once from CHANGELOG (newest first). Each entry: a head with the
+      // version + date, then a bullet list of changes. The <code> in a change is
+      // authored, so innerHTML is safe here (no user input ever reaches this).
+      function renderChangelog() {
+        const body = $("#changelogBody");
+        if (!body || body.childElementCount) return; // build once
+        CHANGELOG.forEach((rel, i) => {
+          const entry = document.createElement("div");
+          entry.className = "cl-entry";
+
+          const head = document.createElement("div");
+          head.className = "cl-head";
+          const ver = document.createElement("span");
+          ver.className = "cl-ver";
+          ver.textContent = "v" + rel.version;
+          const date = document.createElement("span");
+          date.className = "cl-date";
+          date.textContent = rel.date;
+          head.append(ver, date);
+          if (i === 0) { // flag the newest release
+            const latest = document.createElement("span");
+            latest.className = "cl-latest";
+            latest.textContent = "Latest";
+            head.appendChild(latest);
+          }
+          entry.appendChild(head);
+
+          if (rel.title) {
+            const title = document.createElement("div");
+            title.className = "cl-title";
+            title.textContent = rel.title;
+            entry.appendChild(title);
+          }
+
+          const ul = document.createElement("ul");
+          for (const c of rel.changes) {
+            const li = document.createElement("li");
+            const tag = document.createElement("span");
+            tag.className = "cl-tag cl-tag-" + c.tag.toLowerCase();
+            tag.textContent = c.tag;
+            const text = document.createElement("span");
+            text.className = "cl-text";
+            text.innerHTML = c.text;
+            li.append(tag, text);
+            ul.appendChild(li);
+          }
+          entry.appendChild(ul);
+          body.appendChild(entry);
+        });
+      }
+
       // ---- boot ----
       async function boot() {
         await init();
@@ -598,6 +685,18 @@
         };
         $("#exportClose").onclick = () => $("#exportModal").classList.remove("show");
         $("#exportCopy").onclick = () => copyText($("#exportText").value);
+
+        // changelog overlay: footer badge shows the top version and opens the dialog
+        const changelog = $("#changelogModal");
+        $("#verBtn").textContent = "v" + CHANGELOG[0].version;
+        renderChangelog();
+        $("#verBtn").onclick = () => changelog.classList.add("show");
+        $("#changelogClose").onclick = () => changelog.classList.remove("show");
+        // Esc closes the changelog (scoped — leaves the other modals' behaviour alone).
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && changelog.classList.contains("show")) changelog.classList.remove("show");
+        });
+
         // click backdrop closes modals
         document.querySelectorAll(".modal-bg").forEach((bg) =>
           bg.addEventListener("click", (e) => e.target === bg && bg.classList.remove("show"))
