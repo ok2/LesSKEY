@@ -12,3 +12,24 @@ Cargo.lock
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
+
+# Editor config
+.vscode/
+
+# Build artifacts
+helwasm/helwasm.wasm
+
+# Untouched rust-webpack-template scaffold (superseded by helwasm/ proper)
+helwasm/my-app/
+
+# Local test scratch + PERSONAL DATA (real login-name exports — never commit)
+hel_dump
+logins.txt
+logins2.txt
+test.dat
+test.out
+test_dump
+test_init
+test_pb
+testrc
+x1
