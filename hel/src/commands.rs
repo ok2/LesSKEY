@@ -7,7 +7,7 @@ use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
-use crate::structs::{config_flag, config_get, config_set, Command, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::structs::{config_flag, config_get, config_set, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::editor::password;
 // call_cmd_with_input / get_cmd_args_from_command are only used by the native
 // (non-wasm) subprocess branches. copy_to_clipboards is native-only, so it is
@@ -46,7 +46,7 @@ ENTRIES
 
 PASSWORDS
   enc <name|id>          show an entry's password
-  enc ls|ld <regex>      show the matched entry's password (newest, for ld)
+  enc <command>          encode the last name a command prints (ls/ld/gen)
   gen[N] <name>          N variants; name ends G.. (all) or X.. (random) [N=10]
   pb <command>           run a command, copy its output to the clipboard
   pass <name> [pw]       cache a master/override for an entry's subtree
@@ -123,18 +123,21 @@ collapses to bare names (newest last for `ld`) — see `help pb`, `help enc`.";
 
 const HELP_ENC: &str = "\
 enc <name|id>       show an entry's generated password (to stdout).
-enc ls <regex>      encode the last entry of `ls <regex>` (last by name).
-enc ld <regex>      encode the last entry of `ld <regex>` (newest by date).
+enc <command>       run <command> and encode the LAST name in its output:
+                      enc ld <re>    newest entry matching <re>
+                      enc ls <re>    last entry by name
+                      enc gen <nm>   the variant `gen <nm>` would list last
 
-A literal name or list id is tried first; otherwise the argument is run as an
-`ls`/`ld` search and the last match is encoded. On more than one match a `note:`
-reports the count and the chosen entry. To require a unique match instead:
+A literal name or list id is tried first; otherwise the argument is run as a
+command (like `pb`) and its last output line is taken as the entry name —
+`ls`/`ld`/`gen` emit bare names when consumed this way. On more than one
+candidate a `note:` reports the count and the chosen entry; to require a unique
+result instead:
 
-  set hel_enc_strict 1     # multiple matches become an error
+  set hel_enc_strict 1     # multiple candidates become an error
 
-Password goes to stdout, notes/warnings to stderr — so `pb enc …` copies only
-the password. Only `ls`/`ld` are valid as the search form (enc never runs a
-state-changing command). See `help pb`.";
+The password goes to stdout, notes/warnings to stderr, so `pb enc …` copies
+only the password. See `help pb`, `help gen`.";
 
 const HELP_GEN: &str = "\
 gen[N] <name>   show N variants of an entry, sorted by password length.
@@ -142,7 +145,10 @@ gen[N] <name>   show N variants of an entry, sorted by password length.
 If <name> ends in one or more `G`, every numbered variant is generated
 (testG -> test1..test9, testGG -> test1..test99). If it ends in `X`, one random
 numbered variant is produced. Otherwise the single entry is shown. N defaults to
-10. Results populate the id list (left column) for `keep`/`enc`.";
+10. Results populate the id list (left column) for `keep`/`enc`.
+
+Under `pb`/`enc` it lists just the variant names: `pb gen tX` copies a random
+variant's name, `pb enc gen tX` copies that variant's password.";
 
 const HELP_PB: &str = "\
 pb <command>   run <command> and copy its stdout to the clipboard.
@@ -150,6 +156,7 @@ pb <command>   run <command> and copy its stdout to the clipboard.
   pb enc github           copy github's password
   pb enc ld micro.*exa    copy the newest matching entry's password
   pb ld micro             copy the matching names (newest last)
+  pb gen tX               copy a random variant's name
 
 If `hel_pb` (or $HEL_PB) is set, that one command receives the data on stdin.
 Otherwise hel copies to every clipboard found on PATH — pbcopy, wl-copy, xclip,
@@ -267,13 +274,16 @@ impl<'a> LKEval<'a> {
     }
 
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
-        match self.state.lock().borrow().ls.get(name) {
-            Some(pwd) => Some(pwd.clone()),
-            None => match self.state.lock().borrow().db.get(name) {
-                Some(pwd) => Some(pwd.clone()),
-                None => None,
-            },
+        if let Some(pwd) = self.state.lock().borrow().ls.get(name) {
+            return Some(pwd.clone());
         }
+        if let Some(pwd) = self.state.lock().borrow().db.get(name) {
+            return Some(pwd.clone());
+        }
+        // `gen` variants live only in the `ls` map under a numeric id (not in
+        // `db`); also resolve them by entry name, so `enc <variant>` and
+        // `enc gen …` (which yields a variant name) can re-encode them.
+        self.state.lock().borrow().ls.values().find(|p| p.lock().borrow().name == *name).cloned()
     }
 
     pub fn read_master(&self, out: &LKOut, pwd: PasswordRef, read: bool) -> Option<String> {
@@ -458,25 +468,26 @@ impl<'a> LKEval<'a> {
         Some((name, pass))
     }
 
-    /// `enc <arg>`: pick which entry to encode, then encode it. Precedence keeps
-    /// the historical `enc <name>` / `enc <id>` behavior working even when a name
+    /// `enc <arg>`: pick which entry to encode, then encode it. Abstract, like
+    /// `pb`: the argument is a name/id, or any command whose output names the
+    /// entry. Precedence keeps `enc <name>`/`enc <id>` working even when a name
     /// collides with a command keyword:
     ///   1. `arg` resolves to a catalog entry or `ls` id -> encode it.
-    ///   2. else `arg` parses as an `ls`/`ld` search -> evaluate it capturing
-    ///      (so the listing yields bare names), take the LAST non-empty line as
-    ///      the entry name (newest for `ld`), and encode that. With >1 match,
-    ///      `set hel_enc_strict 1` errors instead of taking the newest.
+    ///   2. else `arg` parses as a command -> evaluate it capturing (so
+    ///      `ls`/`ld`/`gen` yield bare names), take the LAST non-empty output
+    ///      line as the entry name (newest for `ld`), and encode that. With >1
+    ///      candidate, `set hel_enc_strict 1` errors instead of taking the last.
     ///   3. else -> error.
-    /// Only `ls`/`ld` are accepted as producers: enc must never execute a
-    /// mutating command (e.g. `rm`) as a side effect of resolving a name.
+    /// Any command is accepted as a producer (parity with `pb`); a producer that
+    /// emits something that is not an entry name simply fails to resolve.
     pub fn cmd_enc_arg(&self, out: &LKOut, arg: &String) {
         if self.get_password(arg).is_some() {
             self.cmd_enc(out, arg);
             return;
         }
         let cmd = match command_parser::cmd(arg) {
-            Ok(c) if matches!(c, Command::Ls(_) | Command::Ld(_)) => c,
-            _ => {
+            Ok(c) => c,
+            Err(_) => {
                 out.e(format!("error: name {} not found", arg));
                 return;
             }
@@ -911,13 +922,22 @@ impl<'a> LKEval<'a> {
         encpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
         self.state.lock().borrow_mut().ls.clear();
         let mut counter = 1;
-        out.o(format!("{:>3} {:>36} {:>4}       {}", "", "Password", "Len", "Name"));
+        // Captured (under `pb`/`enc`): emit just the variant names, like `ls`/`ld`,
+        // so `pb gen …` copies names and `enc gen …` resolves one. Interactive:
+        // the full key/password/len/name table.
+        if !self.capture {
+            out.o(format!("{:>3} {:>36} {:>4}       {}", "", "Password", "Len", "Name"));
+        }
         for num in (encpwds.len() - min(genpwds.len(), num))..encpwds.len() {
             let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
             self.state.lock().borrow_mut().ls.insert(key.clone(), pwd.clone());
-            out.o(format!("{:>3} {:>36} {:>4} {}", key, pass, pass.len(), pwd.lock().borrow().to_string()));
+            if self.capture {
+                out.o(pwd.lock().borrow().name.to_string());
+            } else {
+                out.o(format!("{:>3} {:>36} {:>4} {}", key, pass, pass.len(), pwd.lock().borrow().to_string()));
+            }
         }
     }
 }

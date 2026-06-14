@@ -491,7 +491,7 @@ mod tests {
         assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("ENTRIES"));
         // per-topic detail
         let pr = LKEval::news(Command::Help(Some("enc".to_string())), lk.clone()).eval();
-        assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("enc ld <regex>"));
+        assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("enc ld <re>"));
         // alias resolves to the same topic
         let pr = LKEval::news(Command::Help(Some("descriptor".to_string())), lk.clone()).eval();
         assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("[prefix] <name>"));
@@ -542,5 +542,29 @@ mod tests {
         let pr = LKEval::newd(command_parser::cmd("enc ld").unwrap(), lk.clone(), rp).eval();
         assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 1);
         assert!(!pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("names matched")));
+    }
+
+    #[test]
+    fn gen_capture_and_enc_test() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("a".to_string()) } else { Ok("".to_string()) }
+        };
+        // Captured `gen` -> bare variant names (no header, no password columns),
+        // so it composes with pb/enc like ls/ld.
+        let pr = LKEval::newd(command_parser::cmd("gen testG").unwrap(), lk.clone(), rp)
+            .with_capture(true)
+            .eval();
+        let names = pr.out.out.as_ref().unwrap().lock();
+        assert!(!names.is_empty());
+        assert!(names.iter().all(|l| l.starts_with("test") && !l.contains(' ')));
+        assert!(!names.iter().any(|l| l.contains("Password")));
+        drop(names);
+
+        // `enc gen` runs gen and encodes one variant — proves enc accepts any
+        // command, not only ls/ld. `testX` yields a single random variant.
+        let pr = LKEval::newd(command_parser::cmd("enc gen testX").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 1);
+        assert!(pr.out.out.as_ref().unwrap().lock()[0].contains(' ')); // six S/KEY words, not a name
     }
 }
