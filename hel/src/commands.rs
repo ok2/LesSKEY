@@ -7,12 +7,14 @@ use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
-use crate::structs::{config_get, config_set, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::structs::{config_flag, config_get, config_set, Command, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::utils::editor::password;
-// call_cmd_with_input / get_cmd_args_from_command / get_copy_command_from_env are
-// only used by the native (non-wasm) subprocess branches.
+// call_cmd_with_input / get_cmd_args_from_command are only used by the native
+// (non-wasm) subprocess branches. copy_to_clipboards is native-only, so it is
+// referenced fully-qualified at its one call site (not imported here, which
+// would break the wasm build).
 #[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
-use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, get_copy_command_from_env, rnd};
+use crate::utils::{call_cmd_with_input, get_cmd_args_from_command, rnd};
 
 // In the browser `pb` copies through the host page's clipboard (navigator.clipboard)
 // instead of shelling out to pbcopy/xclip.
@@ -25,7 +27,245 @@ extern "C" {
     fn hel_clipboard_write(text: &str);
 }
 
+const HELP_OVERVIEW: &str = "\
+hel — deterministic S/KEY (RFC 2289) passwords. Your master plus an entry's
+name + sequence + date derive the password on the fly; nothing secret is
+stored. Default form is six short, memorable words (xkcd 936).
+
+  help <topic>   detail for a command or concept, e.g. `help enc`, `help add`,
+                 `help modes`, `help config`, `help files`.
+
+ENTRIES
+  add <descriptor>       define an entry            (help add / help name)
+  ls [regex]             list entries by name
+  ld [regex]             list entries by date (oldest first)
+  keep <id>              save list row <id> (left column of ls/gen) to catalog
+  mv <name> <folder>     move entry under <folder>  (folder `/` = top level)
+  comment <name> [text]  set or clear the comment
+  rm <name>              remove an entry
+
+PASSWORDS
+  enc <name|id>          show an entry's password
+  enc ls|ld <regex>      show the matched entry's password (newest, for ld)
+  gen[N] <name>          N variants; name ends G.. (all) or X.. (random) [N=10]
+  pb <command>           run a command, copy its output to the clipboard
+  pass <name> [pw]       cache a master/override for an entry's subtree
+  unpass [name]          forget cached master (unpass / = root, unpass = all)
+  correct <name>         trust this password's hash
+  uncorrect <name>       untrust it
+
+CATALOG
+  dump                   print the catalog as `add …` lines
+  save [target]          write it: file / key / - / |command   (help save)
+  source <target>        load it: file / key / command|
+  set <key> <value>      runtime config                          (help config)
+
+OTHER
+  help [topic]           this overview, or detail for one topic
+  # text                 a comment (ignored)
+  quit                   exit the REPL
+
+An entry id is the number in the left column of `ls`/`ld`/`gen`; use it anywhere
+a <name> is expected until the next listing. `ls`/`ld` match the name
+case-insensitively as a regular expression.
+
+MODES (the [len][mode] in a descriptor — `help modes` for examples)
+  R six words (default)   N hyphenated   C CamelCase   D decimal
+  H hex   B base64        U.. = UPPERCASE variant (UR UN UH UB)
+  <len> truncates the result to <len> characters (e.g. 20R, 12UB)";
+
+const HELP_NAME: &str = "\
+descriptor — used by `add`, `gen`, and every line of the dump/`save` format:
+
+  [prefix] <name> [<len>]<mode> [<seq>] [<date>] [comment] [^parent]
+
+  prefix    optional literal glued onto the output, e.g. #W9 (to satisfy a
+            \"must contain a symbol/digit\" rule). Part of the generated value.
+  name      entry key, no spaces; feeds the S/KEY hash.
+  len       optional: truncate the output to <len> characters.
+  mode      output form, default R (see `help modes`).
+  seq       S/KEY sequence count, default 99.
+  date      YYYY-MM-DD or `now`, default now. `ld` sorts by it; `enc ld <re>`
+            takes the newest.
+  comment   free text (login, URL, notes).
+  ^parent   place this entry under <parent>: the parent's generated password
+            becomes the master for this entry (chained). The root master is the
+            entry `/`, prompted once or set with `pass /`.
+
+  examples
+    add github
+    add github 20UR 2024-01-01 me@example.com ^work
+    add #W9 ableton 99 2020-12-09 license note";
+
+const HELP_MODES: &str = "\
+modes — output form; prefix with a length to truncate (e.g. 20R). For one fixed
+entry + master:
+
+  R    six words, spaces       ross beau week held yoga anti     (default)
+  UR   R, upper-cased          ROSS BEAU WEEK HELD YOGA ANTI
+  N    hyphenated              ross-beau-week-held-yoga-anti
+  UN   N, upper-cased          ROSS-BEAU-WEEK-HELD-YOGA-ANTI
+  C    CamelCase, no spaces    RossBeauWeekHeldYogaAnti
+  H    hex                     e5a38ad29afc3fcb        (UH = upper)
+  B    base64                  0oqj5cs//Jo             (UB = upper)
+  D    decimal words           1684 680 1995 1203 2046 619
+  <len><mode>  truncate to <len> characters, e.g. 20R, 12UB, 6D.
+  A prefix (e.g. #Q3a) is prepended to every form.";
+
+const HELP_LS: &str = "\
+ls [regex]   list catalog entries sorted by name.
+ld [regex]   list catalog entries sorted by date, oldest first (newest last).
+
+The regex (default `.`) matches case-insensitively against the name, the full
+descriptor, and the comment. Each row gets an id (left column) reusable as a
+<name> in enc/keep/mv/etc. until the next listing. Under `pb`/`enc` the listing
+collapses to bare names (newest last for `ld`) — see `help pb`, `help enc`.";
+
+const HELP_ENC: &str = "\
+enc <name|id>       show an entry's generated password (to stdout).
+enc ls <regex>      encode the last entry of `ls <regex>` (last by name).
+enc ld <regex>      encode the last entry of `ld <regex>` (newest by date).
+
+A literal name or list id is tried first; otherwise the argument is run as an
+`ls`/`ld` search and the last match is encoded. On more than one match a `note:`
+reports the count and the chosen entry. To require a unique match instead:
+
+  set hel_enc_strict 1     # multiple matches become an error
+
+Password goes to stdout, notes/warnings to stderr — so `pb enc …` copies only
+the password. Only `ls`/`ld` are valid as the search form (enc never runs a
+state-changing command). See `help pb`.";
+
+const HELP_GEN: &str = "\
+gen[N] <name>   show N variants of an entry, sorted by password length.
+
+If <name> ends in one or more `G`, every numbered variant is generated
+(testG -> test1..test9, testGG -> test1..test99). If it ends in `X`, one random
+numbered variant is produced. Otherwise the single entry is shown. N defaults to
+10. Results populate the id list (left column) for `keep`/`enc`.";
+
+const HELP_PB: &str = "\
+pb <command>   run <command> and copy its stdout to the clipboard.
+
+  pb enc github           copy github's password
+  pb enc ld micro.*exa    copy the newest matching entry's password
+  pb ld micro             copy the matching names (newest last)
+
+If `hel_pb` (or $HEL_PB) is set, that one command receives the data on stdin.
+Otherwise hel copies to every clipboard found on PATH — pbcopy, wl-copy, xclip,
+xsel, and tmux inside a session — so a bare `pb` works on macOS, Wayland, X11
+and over SSH/tmux with no configuration. With none found, the data is left on
+stdout.";
+
+const HELP_PASS: &str = "\
+pass <name> [pw]   cache a master for <name> and its subtree for this session.
+                   `pass <name>` prompts; `pass <name> pw` sets it inline. Use
+                   `pass /` for the ROOT master used by top-level entries.
+                   Nothing is written to disk.
+unpass [name]      forget a cached master: `unpass <name>` one, `unpass /` the
+                   root, `unpass` (no argument) all of them.";
+
+const HELP_CORRECT: &str = "\
+correct <name>     remember this password's hash as trusted, in ~/.hel_correct
+                   (names + hashes only, never secrets). Later, hel warns if a
+                   freshly derived password does not match a trusted hash —
+                   catching a mistyped master before you use the result.
+uncorrect <name>   drop that trust.";
+
+const HELP_KEEP: &str = "\
+keep <id>   copy list row <id> (the left column of `ls`/`ld`/`gen`) into the
+            catalog as a permanent entry. Useful after `gen` to keep one of the
+            generated variants.";
+
+const HELP_MV: &str = "\
+mv <name> <folder>   move <name> under <folder> so <folder>'s password becomes
+                     its master (chained derivation). Use `/` as <folder> to
+                     move the entry back to the top level. This re-parents; it
+                     does not rename — to rename, `rm` and `add` again.";
+
+const HELP_RM: &str = "\
+rm <name>   remove an entry from the catalog. Other entries are unaffected;
+            `save` to persist the change.";
+
+const HELP_COMMENT: &str = "\
+comment <name> [text]   set the entry's comment to <text>, or clear it when no
+                        text is given. The comment is searched by `ls`/`ld` and
+                        shown in listings.";
+
+const HELP_CATALOG: &str = "\
+The catalog is just a script of `add …` lines.
+
+dump             print the whole catalog to the screen.
+save [target]    persist it. <target>:
+                   (omitted)   hel_dump / $HEL_DUMP / ~/.hel_dump
+                   <path>      a file
+                   -           print to screen (same as dump)
+                   |<command>  pipe the dump into <command>'s stdin
+                 A diff (< removed, > added) vs the last load/save is shown.
+source <target>  load a catalog. <target>:
+                   <path>      a file (a localStorage key in the wasm build)
+                   <command>|  run <command>, load its stdout as a script
+Notion: `save |hel store notion:<page>` and `source hel load notion:<page>|`
+store the catalog in a Notion code block (token via `set hel_notion_token …`).";
+
+const HELP_CONFIG: &str = "\
+set <key> <value>   set a runtime config value (typically from ~/.helrc). Keys
+                    are case-insensitive and each also reads the UPPER-CASE env
+                    var of the same name.
+
+  hel_pb            clipboard command for `pb` (else the built-in multi-sink copy)
+  hel_enc_strict    1/true/on -> `enc ls|ld <re>` errors when >1 entry matches
+  hel_dump          default `save`/`dump` target
+  hel_notion_token  token for the `hel store`/`hel load` Notion subcommands";
+
+const HELP_FILES: &str = "\
+files and environment
+  ~/.helrc         startup script, run once          $HEL_INIT
+  ~/.hel_history   REPL history                        $HEL_HISTORY
+  ~/.hel_dump      default catalog file                $HEL_DUMP
+  ~/.hel_correct   trusted password hashes             $HEL_CORRECT
+  prompt string                                        $HEL_PROMPT
+Non-interactive subcommands (run before the REPL, no ~/.helrc, no prompt):
+  hel store <notion:ref>    read a catalog on stdin and write it to Notion
+  hel load  <notion:ref>    print the catalog stored in a Notion page";
+
+const HELP_QUIT: &str = "\
+quit   exit the REPL (also Ctrl-D / EOF). The catalog is NOT saved automatically
+       — `save` first if you have unsaved changes.";
+
 impl<'a> LKEval<'a> {
+    /// `help [topic]`: the grouped command overview, or detail for one command
+    /// or concept. Output goes to stdout; an unknown topic errors on stderr.
+    pub fn cmd_help(&self, out: &LKOut, topic: &Option<String>) {
+        let text: &str = match topic.as_deref().map(str::to_lowercase).as_deref() {
+            None => HELP_OVERVIEW,
+            Some("add" | "name" | "desc" | "descriptor" | "entry" | "parent") => HELP_NAME,
+            Some("modes" | "mode") => HELP_MODES,
+            Some("ls" | "ld" | "list") => HELP_LS,
+            Some("enc") => HELP_ENC,
+            Some("gen") => HELP_GEN,
+            Some("pb") => HELP_PB,
+            Some("pass" | "unpass") => HELP_PASS,
+            Some("correct" | "uncorrect") => HELP_CORRECT,
+            Some("keep") => HELP_KEEP,
+            Some("mv" | "move") => HELP_MV,
+            Some("rm" | "remove") => HELP_RM,
+            Some("comment") => HELP_COMMENT,
+            Some("dump" | "save" | "source" | "catalog") => HELP_CATALOG,
+            Some("set" | "config") => HELP_CONFIG,
+            Some("files" | "file" | "env" | "environment") => HELP_FILES,
+            Some("quit" | "exit") => HELP_QUIT,
+            Some(other) => {
+                out.e(format!(
+                    "error: no help for {}; try `help` for the command list",
+                    other
+                ));
+                return;
+            }
+        };
+        out.o(text.to_string());
+    }
+
     pub fn get_password(&self, name: &String) -> Option<PasswordRef> {
         match self.state.lock().borrow().ls.get(name) {
             Some(pwd) => Some(pwd.clone()),
@@ -218,10 +458,70 @@ impl<'a> LKEval<'a> {
         Some((name, pass))
     }
 
+    /// `enc <arg>`: pick which entry to encode, then encode it. Precedence keeps
+    /// the historical `enc <name>` / `enc <id>` behavior working even when a name
+    /// collides with a command keyword:
+    ///   1. `arg` resolves to a catalog entry or `ls` id -> encode it.
+    ///   2. else `arg` parses as an `ls`/`ld` search -> evaluate it capturing
+    ///      (so the listing yields bare names), take the LAST non-empty line as
+    ///      the entry name (newest for `ld`), and encode that. With >1 match,
+    ///      `set hel_enc_strict 1` errors instead of taking the newest.
+    ///   3. else -> error.
+    /// Only `ls`/`ld` are accepted as producers: enc must never execute a
+    /// mutating command (e.g. `rm`) as a side effect of resolving a name.
+    pub fn cmd_enc_arg(&self, out: &LKOut, arg: &String) {
+        if self.get_password(arg).is_some() {
+            self.cmd_enc(out, arg);
+            return;
+        }
+        let cmd = match command_parser::cmd(arg) {
+            Ok(c) if matches!(c, Command::Ls(_) | Command::Ld(_)) => c,
+            _ => {
+                out.e(format!("error: name {} not found", arg));
+                return;
+            }
+        };
+        let print = LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password)
+            .with_capture(true)
+            .eval();
+        // Surface the producer's own diagnostics (e.g. a bad regex).
+        print.out.copy_err(out);
+        let names: Vec<String> = print
+            .out
+            .data()
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect();
+        let name = match names.last() {
+            Some(n) => n.clone(),
+            None => {
+                out.e(format!("error: no entry matches {}", arg));
+                return;
+            }
+        };
+        if names.len() > 1 {
+            if config_flag("hel_enc_strict") {
+                out.e(format!(
+                    "error: {} entries match {}; refusing under hel_enc_strict (narrow the pattern or use an id)",
+                    names.len(),
+                    arg
+                ));
+                return;
+            }
+            out.e(format!("note: {} names matched; encoding last: {}", names.len(), name));
+        }
+        self.cmd_enc(out, &name);
+    }
+
     pub fn cmd_pb(&self, out: &LKOut, command: &String) {
         match command_parser::cmd(command) {
             Ok(cmd) => {
-                let print = LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password).eval();
+                // capture=true so a wrapped `ls`/`ld` yields bare names.
+                let print = LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password)
+                    .with_capture(true)
+                    .eval();
                 let data = print.out.data();
                 print.out.copy_err(&out);
                 if data.len() > 0 {
@@ -234,18 +534,37 @@ impl<'a> LKEval<'a> {
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        let (copy_command, copy_cmd_args) = get_copy_command_from_env();
-                        match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
-                            Ok(s) if s.len() > 0 => {
-                                out.o(format!(
-                                    "Copied output with the command {}, and got following output:",
-                                    copy_command
-                                ));
-                                out.o(s.trim().to_string());
+                        // Explicit override (`set hel_pb` or $HEL_PB): one command,
+                        // as before. Otherwise fan out to every present clipboard.
+                        match config_get("hel_pb").and_then(|s| get_cmd_args_from_command(&s).ok()) {
+                            Some((copy_command, copy_cmd_args)) => {
+                                match call_cmd_with_input(&copy_command, &copy_cmd_args, &data) {
+                                    Ok(s) if s.len() > 0 => {
+                                        out.o(format!(
+                                            "Copied output with the command {}, and got following output:",
+                                            copy_command
+                                        ));
+                                        out.o(s.trim().to_string());
+                                    }
+                                    Ok(_) => out.o(format!("Copied output with command {}", copy_command)),
+                                    Err(e) => out.e(format!("error: failed to copy: {}", e.to_string())),
+                                };
                             }
-                            Ok(_) => out.o(format!("Copied output with command {}", copy_command)),
-                            Err(e) => out.e(format!("error: failed to copy: {}", e.to_string())),
-                        };
+                            None => {
+                                let report = crate::utils::copy_to_clipboards(&data);
+                                if !report.ok.is_empty() {
+                                    out.o(format!(
+                                        "Copied {} chars to clipboard ({})",
+                                        data.chars().count(),
+                                        report.ok.join(", ")
+                                    ));
+                                } else {
+                                    // No sink and no override: never drop the payload.
+                                    out.o(data.clone());
+                                    out.e("error: no clipboard available; data left on stdout".to_string());
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -439,7 +758,14 @@ impl<'a> LKEval<'a> {
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
             self.state.lock().borrow_mut().ls.insert(key.clone(), pwd.clone());
-            out.o(format!("{:>3} {}", key, pwd.lock().borrow().to_string()));
+            // Captured (under `pb`/`enc`): emit just the entry name — a unique db
+            // key that re-resolves via get_password, so it can feed `enc` and
+            // makes `pb ls`/`pb ld` copy clean names. Interactive: rich rows.
+            if self.capture {
+                out.o(pwd.lock().borrow().name.to_string());
+            } else {
+                out.o(format!("{:>3} {}", key, pwd.lock().borrow().to_string()));
+            }
         }
     }
 

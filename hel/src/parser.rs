@@ -91,7 +91,7 @@ peg::parser! {
         rule mode() -> Mode = m:(umode() / rmode()) !['0'..='9' | 'a'..='z' | 'A'..='Z'] { m }
 
         rule noop_cmd() -> Command<'input> = ("#" [' '..='~']*)? { Command::Noop }
-        rule help_cmd() -> Command<'input> = "help" { Command::Help }
+        rule help_cmd() -> Command<'input> = "help" t:(_ w:word() { w })? { Command::Help(t) }
         rule quit_cmd() -> Command<'input> = "quit" { Command::Quit }
         rule pb_cmd() -> Command<'input> = "pb" _ e:$(([' '..='~'])+) { Command::PasteBuffer(e.to_string()) }
         rule save_cmd() -> Command<'input> = "save" _ s:$(([' '..='~'])+) { Command::Dump(Some(s.to_string())) }
@@ -114,7 +114,9 @@ peg::parser! {
         rule correct_cmd() -> Command<'input> = "correct" _ name:word() { Command::Correct(name) }
         rule uncorrect_cmd() -> Command<'input> = "uncorrect" _ name:word() { Command::Uncorrect(name) }
         rule unpass_cmd() -> Command<'input> = "unpass" name:(_ w:word() { w })? { Command::UnPass(name) }
-        rule enc_cmd() -> Command<'input> = "enc" _ name:word() { Command::Enc(name) }
+        // `enc` takes the rest of the line (like `pb`): a bare name/id, or a
+        // sub-command whose output names the entry to encode (e.g. `enc ld re`).
+        rule enc_cmd() -> Command<'input> = "enc" _ e:$(([' '..='~'])+) { Command::Enc(e.to_string()) }
         rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
         rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
@@ -249,6 +251,33 @@ add t3 C 99 2022-12-14
                 Command::Noop
             ])
         );
+    }
+
+    #[test]
+    fn parse_enc_arg_test() {
+        // `enc` now captures the rest of the line (like `pb`): a bare name/id,
+        // or a sub-command (`ld <regex>`) resolved at eval time.
+        assert_eq!(command_parser::cmd("enc t3"), Ok(Command::Enc("t3".to_string())));
+        assert_eq!(command_parser::cmd("enc 3"), Ok(Command::Enc("3".to_string())));
+        assert_eq!(
+            command_parser::cmd("enc ld micro.*exa"),
+            Ok(Command::Enc("ld micro.*exa".to_string()))
+        );
+        assert_eq!(
+            command_parser::cmd("enc ls foo"),
+            Ok(Command::Enc("ls foo".to_string()))
+        );
+        // Display round-trips.
+        assert_eq!(Command::Enc("ld micro.*exa".to_string()).to_string(), "enc ld micro.*exa");
+    }
+
+    #[test]
+    fn parse_help_test() {
+        assert_eq!(command_parser::cmd("help"), Ok(Command::Help(None)));
+        assert_eq!(command_parser::cmd("help enc"), Ok(Command::Help(Some("enc".to_string()))));
+        assert_eq!(command_parser::cmd("help modes"), Ok(Command::Help(Some("modes".to_string()))));
+        assert_eq!(Command::Help(Some("enc".to_string())).to_string(), "help enc");
+        assert_eq!(Command::Help(None).to_string(), "help");
     }
 
     #[test]

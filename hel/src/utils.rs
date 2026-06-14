@@ -1,6 +1,4 @@
 use shlex::split;
-use std::env;
-use std::ffi::OsString;
 use std::io;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -242,14 +240,60 @@ pub fn get_cmd_args_from_command(command: &str) -> io::Result<(String, Vec<Strin
     Ok((shellexpand::full(&args[0]).unwrap().into_owned(), args[1..].to_vec()))
 }
 
-pub fn get_copy_command_from_env() -> (String, Vec<String>) {
-    let cmd_os_str = env::var_os("HEL_PB").unwrap_or_else(|| match env::consts::OS {
-        _ if env::var("TMUX").is_ok() => OsString::from("tmux load-buffer -"),
-        "macos" => OsString::from("pbcopy"),
-        "linux" => OsString::from("xclip"),
-        _ => OsString::from("cat"),
-    });
-    get_cmd_args_from_command(&cmd_os_str.to_string_lossy()).unwrap_or_else(|_| ("cat".to_string(), vec![]))
+/// Outcome of a built-in fan-out copy: which sinks accepted the data and which
+/// failed (best-effort, like the reference shell script's `2>/dev/null`).
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Default, PartialEq)]
+pub struct CopyReport {
+    pub ok: Vec<String>,
+    pub err: Vec<(String, String)>,
+}
+
+/// True if `bin` is an existing file on any `$PATH` directory.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn bin_on_path(bin: &str) -> bool {
+    match std::env::var_os("PATH") {
+        Some(paths) => std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()),
+        None => false,
+    }
+}
+
+/// Built-in, zero-config clipboard copy: pipe `data` into **every** clipboard
+/// sink present on `$PATH`, so a single `pb` works across macOS, Wayland, X11
+/// and (inside a session) tmux without any `HEL_PB` script. Used only when no
+/// explicit override (`set hel_pb` / `HEL_PB`) is set. The sink set + flags
+/// mirror the reference script, with two fixes: `xclip -selection clipboard`
+/// (the script's bare `xclip` filled the X11 *primary*, so Ctrl/Cmd-V missed
+/// it) and `xsel -ib` (input-to-clipboard; the script's `-ob` is the *output*
+/// direction). `wl-copy` is added for Wayland.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn copy_to_clipboards(data: &str) -> CopyReport {
+    let mut sinks: Vec<(&str, Vec<&str>)> = Vec::new();
+    if bin_on_path("pbcopy") {
+        sinks.push(("pbcopy", vec![]));
+    }
+    if bin_on_path("wl-copy") {
+        sinks.push(("wl-copy", vec![]));
+    }
+    if bin_on_path("xclip") {
+        sinks.push(("xclip", vec!["-selection", "clipboard"]));
+    }
+    if bin_on_path("xsel") {
+        sinks.push(("xsel", vec!["-ib"]));
+    }
+    if std::env::var("TMUX").is_ok() && bin_on_path("tmux") {
+        sinks.push(("tmux", vec!["load-buffer", "-"]));
+    }
+
+    let mut report = CopyReport::default();
+    for (bin, args) in sinks {
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        match call_cmd_with_input(bin, &args, data) {
+            Ok(_) => report.ok.push(bin.to_string()),
+            Err(e) => report.err.push((bin.to_string(), e.to_string())),
+        }
+    }
+    report
 }
 
 #[cfg(test)]
@@ -277,6 +321,19 @@ line 4"###
             call_cmd_with_input("echo", &vec!["-n".to_string(), "test is ok".to_string()], "").unwrap(),
             "test is ok".to_string()
         );
+    }
+
+    #[test]
+    fn bin_on_path_test() {
+        // `sh` is on PATH on every unix; a nonsense name is not.
+        assert!(bin_on_path("sh"));
+        assert!(!bin_on_path("definitely-not-a-real-binary-xyzzy-42"));
+    }
+
+    #[test]
+    fn copy_report_default_test() {
+        let r = CopyReport::default();
+        assert!(r.ok.is_empty() && r.err.is_empty());
     }
 
     #[test]

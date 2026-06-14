@@ -19,6 +19,12 @@ pub struct LKEval<'a> {
     pub cmd: Command<'a>,
     pub state: LKRef,
     pub read_password: fn(String) -> std::io::Result<String>,
+    /// When true, listing commands (`ls`/`ld`) emit bare entry names instead of
+    /// the rich `key name mode seq date comment` rows. Set by `pb`/`enc` on the
+    /// sub-command they evaluate so the captured output is consumable (names
+    /// feed `enc`, and `pb ls`/`pb ld` copy clean names). Interactive evals keep
+    /// it false.
+    pub capture: bool,
 }
 
 #[derive(Debug)]
@@ -80,7 +86,14 @@ impl<'a> LKEval<'a> {
             cmd,
             state,
             read_password,
+            capture: false,
         }
+    }
+
+    /// Builder: mark this eval as capturing (see `LKEval::capture`).
+    pub fn with_capture(mut self, capture: bool) -> Self {
+        self.capture = capture;
+        self
     }
 
     pub fn news(cmd: Command<'a>, state: LKRef) -> Self {
@@ -121,8 +134,8 @@ impl<'a> LKEval<'a> {
                 }
                 None => out.e(format!("error: password {} not found", name)),
             },
-            Command::Enc(name) => {
-                self.cmd_enc(&out, name);
+            Command::Enc(arg) => {
+                self.cmd_enc_arg(&out, arg);
             }
             Command::Gen(num, name) => self.cmd_gen(&out, &num, &name),
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
@@ -144,39 +157,7 @@ impl<'a> LKEval<'a> {
             Command::Correct(name) => self.cmd_correct(&out, name, true, None),
             Command::Uncorrect(name) => self.cmd_correct(&out, name, false, None),
             Command::Noop => { to_history = false; },
-            Command::Help => {
-                out.o(concat!(
-                    "hel - S/KEY (RFC 2289) deterministic passwords from your master + the entry\n",
-                    "name; nothing secret is stored. The default mode is six short, memorable words\n",
-                    "(the \"correct horse battery staple\" idea from xkcd 936).\n",
-                    "\n",
-                    "entries\n",
-                    "  add <name> [len][mode] [seq] [date] [text] [^parent]   define an entry\n",
-                    "  keep <n>        keep list entry n (left column of ls/gen) in the catalog\n",
-                    "  ls [regex]      list by name         ld [regex]   list by date\n",
-                    "  mv <name> <new>     rename / move      rm <name>    remove\n",
-                    "  comment <name> [text]                  set or clear the comment\n",
-                    "\n",
-                    "passwords\n",
-                    "  enc <name>        show the generated password\n",
-                    "  gen[N] <name>     N numbered variants; name ends in G.. (all) or X.. (random)\n",
-                    "  pb <command>      run a command and copy its output to the clipboard\n",
-                    "  pass <name> [pw]  cache a master / override for an entry's subtree\n",
-                    "  unpass [name]     forget a cached password   (unpass /  = root; unpass  = all)\n",
-                    "  correct <name>    trust this password's hash  uncorrect <name>  untrust it\n",
-                    "\n",
-                    "catalog\n",
-                    "  dump              print the catalog          ls            list it\n",
-                    "  save [target]     write it (file / localStorage key / |command)\n",
-                    "  source <target>   load it                    set <key> <val>   config\n",
-                    "\n",
-                    "other\n",
-                    "  help  this text      # text  a comment (ignored)      quit  exit (CLI)\n",
-                    "\n",
-                    "modes  R words  C camel  N hyphenated  H hex  B base64  D decimal   (U.. = UPPER)\n",
-                    "       R is the six-word S/KEY form: memorable, pronounceable, easy to type anywhere."
-                ).to_string());
-            }
+            Command::Help(topic) => self.cmd_help(&out, topic),
             Command::Mv(name, folder) => self.cmd_mv(&out, &name, &folder),
             Command::Error(error) => {
                 to_history = false;
@@ -466,5 +447,100 @@ mod tests {
         assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "test pwd1");
         LKEval::news(Command::Pass("t1".to_string(), Some("other pw".to_string())), lk.clone()).eval();
         assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "other pw");
+    }
+
+    fn mk(name: &str, y: i32, m: u32, d: u32) -> crate::password::PasswordRef {
+        Password::from_password(Password {
+            name: name.to_string(),
+            prefix: None,
+            length: None,
+            mode: Mode::Regular,
+            seq: 99,
+            date: Date::new(y, m, d),
+            comment: None,
+            parent: None,
+        })
+    }
+
+    #[test]
+    fn capture_names_test() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        LKEval::news(Command::Add(mk("btest", 2022, 1, 2)), lk.clone()).eval();
+        LKEval::news(Command::Add(mk("atest", 2024, 5, 6)), lk.clone()).eval();
+
+        // Captured ls -> bare names, sorted by name.
+        let pr = LKEval::news(Command::Ls(".".to_string()), lk.clone()).with_capture(true).eval();
+        assert_eq!(pr.out, LKOut::from_vecs(vec!["atest".to_string(), "btest".to_string()], vec![]));
+
+        // Captured ld -> bare names, sorted by date ascending (newest last).
+        let pr = LKEval::news(Command::Ld(".".to_string()), lk.clone()).with_capture(true).eval();
+        assert_eq!(pr.out, LKOut::from_vecs(vec!["btest".to_string(), "atest".to_string()], vec![]));
+
+        // Interactive ls keeps the rich rows (key + mode + date), not bare names.
+        let pr = LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval();
+        let rows = pr.out.out.as_ref().unwrap().lock();
+        assert!(rows.iter().any(|l| l.contains("atest R 99 2024-05-06")));
+        assert!(rows.iter().all(|l| l.as_str() != "atest" && l.as_str() != "btest"));
+    }
+
+    #[test]
+    fn help_test() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // overview
+        let pr = LKEval::news(Command::Help(None), lk.clone()).eval();
+        assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("ENTRIES"));
+        // per-topic detail
+        let pr = LKEval::news(Command::Help(Some("enc".to_string())), lk.clone()).eval();
+        assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("enc ld <regex>"));
+        // alias resolves to the same topic
+        let pr = LKEval::news(Command::Help(Some("descriptor".to_string())), lk.clone()).eval();
+        assert!(pr.out.out.as_ref().unwrap().lock()[0].contains("[prefix] <name>"));
+        // unknown topic -> stderr error, empty stdout
+        let pr = LKEval::news(Command::Help(Some("bogus".to_string())), lk.clone()).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 0);
+        assert!(pr.out.err.as_ref().unwrap().lock()[0].contains("no help for bogus"));
+    }
+
+    #[test]
+    fn enc_consumer_test() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        LKEval::news(Command::Add(mk("microexa1", 2024, 1, 10)), lk.clone()).eval();
+        LKEval::news(Command::Add(mk("microexa2", 2025, 9, 1)), lk.clone()).eval();
+        LKEval::news(Command::Add(mk("microexaadmin", 2026, 3, 4)), lk.clone()).eval();
+        LKEval::news(Command::Add(mk("other", 2023, 1, 1)), lk.clone()).eval();
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("a".to_string()) } else { Ok("".to_string()) }
+        };
+
+        // enc ld <re>: 3 matches -> encode the newest (microexaadmin); note on stderr.
+        let pr = LKEval::newd(command_parser::cmd("enc ld micro.*exa").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 1);
+        let pass_newest = pr.out.out.as_ref().unwrap().lock()[0].clone();
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().any(|l| l == "note: 3 names matched; encoding last: microexaadmin"));
+
+        // Same password as encoding the newest entry by name directly.
+        lk.lock().borrow_mut().secrets.clear();
+        let pr2 = LKEval::newd(command_parser::cmd("enc microexaadmin").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr2.out.out.as_ref().unwrap().lock()[0].clone(), pass_newest);
+
+        // 0 matches -> error, empty stdout (so a wrapping `pb` copies nothing).
+        let pr = LKEval::newd(command_parser::cmd("enc ld nomatch").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 0);
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("no entry matches")));
+
+        // strict: >1 match errors, nothing encoded.
+        crate::structs::config_set("hel_enc_strict", "1");
+        let pr = LKEval::newd(command_parser::cmd("enc ld micro.*exa").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 0);
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("hel_enc_strict")));
+        crate::structs::config_set("hel_enc_strict", "0");
+
+        // literal-first: an entry named like a command keyword still encodes that
+        // entry (not the listing) and emits no "names matched" note.
+        LKEval::news(Command::Add(mk("ld", 2020, 1, 1)), lk.clone()).eval();
+        lk.lock().borrow_mut().secrets.clear();
+        let pr = LKEval::newd(command_parser::cmd("enc ld").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 1);
+        assert!(!pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("names matched")));
     }
 }

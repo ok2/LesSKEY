@@ -67,6 +67,15 @@ pub fn config_get(key: &str) -> Option<String> {
     std::env::var(key.to_uppercase()).ok()
 }
 
+/// A boolean config flag: true for `1/true/yes/on` (any case), false otherwise
+/// (including unset). Used for toggles like `hel_enc_strict`.
+pub fn config_flag(key: &str) -> bool {
+    match config_get(key) {
+        Some(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+        None => false,
+    }
+}
+
 /// The runtime config as `(UPPERCASE_KEY, value)` pairs, for injection into the
 /// environment of child processes (so `set hel_notion_token …` reaches a spawned
 /// `hel store`/`hel load`).
@@ -107,7 +116,7 @@ pub enum Command<'a> {
     Comment(Name, Comment),
     Error(LKErr<'a>),
     Noop,
-    Help,
+    Help(Option<Name>),
     Quit,
 }
 
@@ -133,7 +142,7 @@ impl<'a> PartialEq for Command<'a> {
             (Command::Comment(a, b), Command::Comment(x, y)) => a == x && b == y,
             (Command::Error(s), Command::Error(o)) => s == o,
             (Command::Noop, Command::Noop) => true,
-            (Command::Help, Command::Help) => true,
+            (Command::Help(s), Command::Help(o)) => s == o,
             (Command::Quit, Command::Quit) => true,
             _ => false,
         }
@@ -168,7 +177,8 @@ impl<'a> std::fmt::Display for Command<'a> {
             Command::Comment(a, Some(b)) => write!(f, "comment {} {}", a, b),
             Command::Error(s) => write!(f, "error {}", s),
             Command::Noop => write!(f, "noop"),
-            Command::Help => write!(f, "help"),
+            Command::Help(None) => write!(f, "help"),
+            Command::Help(Some(t)) => write!(f, "help {}", t),
             Command::Quit => write!(f, "quit"),
         }
     }
