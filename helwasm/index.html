@@ -158,6 +158,12 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- Shown only when a new version installs while you're mid-entry; tapping it
+         reloads to apply the update. Cold-open updates apply silently (no bar). -->
+    <button class="update-bar" id="updateBar" type="button" hidden>
+      Update ready &mdash; tap to apply
+    </button>
+
     <!-- Import modal -->
     <div class="modal-bg" id="importModal">
       <div class="modal">
@@ -225,6 +231,12 @@
       // is { tag: "New" | "Improved", text }; `text` may hold inline <code> for command
       // names (authored/trusted content, rendered as HTML). `title` = the release theme.
       const CHANGELOG = [
+        { version: "1.1.0", date: "2026-06-14", title: "Updates itself, works offline", changes: [
+          { tag: "New", text: "The installed app now updates itself the next time you open it — no more removing and re-adding, and your saved catalog is kept across updates." },
+          { tag: "New", text: "Runs fully offline once installed; everything is cached on your device." },
+          { tag: "Improved", text: "<code>help</code> takes a topic: <code>help [topic]</code> gives a grouped overview plus per-command detail." },
+          { tag: "Improved", text: "<code>enc</code> takes a sub-command like <code>pb</code>: <code>enc ls</code> / <code>enc ld &lt;regex&gt;</code> encodes the matching entry, and <code>pb ld &lt;regex&gt;</code> copies its name." },
+        ] },
         { version: "1.0.0", date: "2026-06-10", title: "Keyboard-first, and installable", changes: [
           { tag: "New", text: "Press Enter in the name field to jump to the master; Enter in the master generates and copies." },
           { tag: "New", text: "Install LesS/KEY to your home screen and run it as a standalone app." },
@@ -705,6 +717,70 @@
         appendLine('<span class="muted"># LesS/KEY ready. Runs entirely in your browser (WASM); nothing is sent to a server. Try: help</span>');
       }
       boot();
+
+      // ---- PWA: self-update on open, without ever losing your data ----------
+      // A service worker makes new code land IN PLACE, so you never remove and
+      // re-add the home-screen app (which is what wipes localStorage). Updates
+      // rewrite only the code cache; the "hel:" catalog in localStorage is never
+      // touched. See projects/hel-wasm-website/notes/pwa-auto-update.md.
+      (function registerServiceWorker() {
+        if (!("serviceWorker" in navigator)) return;
+
+        // "Busy" = a secret field has content or focus -> never auto-reload and
+        // nuke a half-typed master password.
+        const isBusy = () =>
+          ["master", "qsecret", "passInput"].some((id) => {
+            const el = document.getElementById(id);
+            return el && (el.value || document.activeElement === el);
+          });
+
+        window.addEventListener("load", async () => {
+          try {
+            // updateViaCache:'none' -> sw.js itself is always fetched fresh, so a
+            // new version is detected reliably, not hidden behind the HTTP cache.
+            const reg = await navigator.serviceWorker.register("./sw.js", {
+              updateViaCache: "none",
+            });
+
+            // Apply an update by reloading once when the new worker takes control,
+            // but only on a real update (page was already controlled) and only
+            // when you're not mid-entry.
+            let refreshing = false;
+            const hadController = !!navigator.serviceWorker.controller;
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+              if (refreshing || !hadController || isBusy()) return;
+              refreshing = true;
+              location.reload();
+            });
+
+            // If an update installs while you ARE busy, surface a tap-to-apply bar
+            // instead of reloading under you.
+            const bar = document.getElementById("updateBar");
+            if (bar) bar.onclick = () => location.reload();
+            reg.addEventListener("updatefound", () => {
+              const sw = reg.installing;
+              if (!sw) return;
+              sw.addEventListener("statechange", () => {
+                if (sw.state === "installed" && hadController && isBusy() && bar) {
+                  bar.hidden = false;
+                }
+              });
+            });
+
+            // Check for a new version every time the app is opened or resumed.
+            const check = () => reg.update().catch(() => {});
+            check();
+            document.addEventListener("visibilitychange", () => {
+              if (document.visibilityState === "visible") check();
+            });
+
+            // Ask the browser to keep storage durable (best effort on iOS).
+            navigator.storage?.persist?.();
+          } catch (_) {
+            // SW is optional; the app works without it.
+          }
+        });
+      })();
     </script>
   </body>
 </html>
