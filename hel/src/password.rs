@@ -87,6 +87,9 @@ impl Password {
             Mode::Base64 => skey.to_b64(),
             Mode::Base64Upcase => skey.to_b64().to_uppercase(),
             Mode::Decimal => skey.to_dec().map(|v| v.to_string()).join(sep),
+            // A TOTP entry's "password" is its Regular rendering; that value keys
+            // the entry's inline #/! blobs. `enc` intercepts T to print the code.
+            Mode::Totp => skey.to_words().join(sep),
         };
         let result = match &self.prefix {
             Some(p) => (p.to_owned() + sep + &result).to_string(),

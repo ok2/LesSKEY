@@ -46,7 +46,7 @@ impl LKRead {
         }
     }
 
-    pub fn read(&mut self) -> LKEval {
+    pub fn read(&mut self) -> LKEval<'_> {
         let history_file = HISTORY_FILE.to_str().unwrap();
         self.cmd = match &self.input {
             Some(cmd) => cmd.to_string(),
@@ -67,7 +67,9 @@ impl LKRead {
         match command_parser::cmd(&self.cmd) {
             Ok(cmd) => LKEval::new(self.rl.clone(), cmd, self.state.clone(), self.read_password),
             Err(err) => {
-                self.rl.lock().add_history_entry(&self.cmd);
+                // A line that failed to parse still lands in history; redact any
+                // plaintext #"..."/!"..." so a mistyped secret is never persisted.
+                self.rl.lock().add_history_entry(crate::crypto::sanitize_for_history(&self.cmd).as_str());
                 self.rl.lock().save_history(&history_file).ok();
                 LKEval::new(self.rl.clone(), Command::Error(LKErr::ParseError(err)), self.state.clone(), self.read_password)
             },
@@ -124,9 +126,31 @@ impl<'a> LKEval<'a> {
             Command::Ld(filter) => {
                 self.cmd_ls(&out, filter.to_string(), |a, b| a.lock().borrow().date.cmp(&b.lock().borrow().date))
             }
-            Command::Add(name) => self.cmd_add(&out, &name),
+            Command::Add(name) => {
+                self.cmd_add(&out, &name);
+                // Auto-encrypt any #"..."/!"..." the user typed (borrow-safe here:
+                // cmd_add's state borrow is released). The mutation is on the same
+                // shared PasswordRef the Add-history Display reads, so the history
+                // line below is already ciphertext.
+                let _ = self.encrypt_inline_tokens(&out, &name);
+            }
             Command::Keep(name) => self.cmd_keep(&out, &name),
-            Command::Comment(name, comment) => self.cmd_comment(&out, &name, &comment),
+            Command::Comment(name, comment) => {
+                self.cmd_comment(&out, &name, &comment);
+                // Comment's Display reads its own plaintext copy, so the shared-ref
+                // trick doesn't cover it: encrypt in place, then write the sealed
+                // line to history ourselves (and skip the generic push).
+                to_history = false;
+                if let Some(pwd) = self.get_password(name) {
+                    let _ = self.encrypt_inline_tokens(&out, &pwd);
+                    let line = match pwd.lock().borrow().comment.clone() {
+                        Some(c) => format!("comment {} {}", name, c),
+                        None => format!("comment {}", name),
+                    };
+                    self.rl.lock().add_history_entry(crate::crypto::sanitize_for_history(&line).as_str());
+                    self.rl.lock().save_history(&history_file).ok();
+                }
+            }
             Command::Rm(name) => match self.get_password(name) {
                 Some(pwd) => {
                     self.state.lock().borrow_mut().db.remove(&pwd.lock().borrow().name);
@@ -137,6 +161,7 @@ impl<'a> LKEval<'a> {
             Command::Enc(arg) => {
                 self.cmd_enc_arg(&out, arg);
             }
+            Command::Reveal(name) => self.cmd_reveal(&out, name),
             Command::Gen(num, name) => self.cmd_gen(&out, &num, &name),
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
             Command::Source(script) => {
@@ -171,7 +196,11 @@ impl<'a> LKEval<'a> {
         }
 
         if to_history {
-            self.rl.lock().add_history_entry(self.cmd.to_string().as_str());
+            // Defense in depth: the Add path already sealed the shared record, but
+            // route every history line through the redactor so no plaintext marker
+            // can slip through.
+            let line = crate::crypto::sanitize_for_history(&self.cmd.to_string());
+            self.rl.lock().add_history_entry(line.as_str());
             self.rl.lock().save_history(&history_file).ok();
         }
 
@@ -428,6 +457,74 @@ mod tests {
                 lk.clone()
             )
         );
+    }
+
+    #[test]
+    fn totp_add_seal_enc_reveal() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // master prompt returns "master" for the root; anything else empty.
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("master".to_string()) } else { Ok("".to_string()) }
+        };
+        let secret = "JBSWY3DPEHPK3PXP";
+        let uri = format!("otpauth://totp/x?secret={}", secret);
+        // add-by-value: the #"…" is sealed in place using the entry's own password.
+        let addline = format!("add x t T 99 now #\"{}\"", uri);
+        let add = command_parser::cmd(&addline).unwrap();
+        LKEval::newd(add, lk.clone(), rp).eval();
+
+        // the stored record must hold a #<blob>, never the plaintext secret/URI.
+        let pwd = lk.lock().borrow().db.get("t").unwrap().clone();
+        let comment = pwd.lock().borrow().comment.clone().unwrap();
+        assert!(!comment.contains(secret), "plaintext leaked into comment: {}", comment);
+        assert!(!comment.contains("otpauth://"), "plaintext uri leaked: {}", comment);
+        assert!(comment.starts_with('#') && !comment.contains('"'));
+        assert!(!pwd.lock().borrow().to_string().contains(secret));
+
+        // reveal round-trips back to the exact otpauth URI.
+        let pr = LKEval::newd(command_parser::cmd("reveal t").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().clone(), vec![uri.clone()]);
+
+        // enc prints a 6-digit TOTP code (not the R password).
+        let pr = LKEval::newd(command_parser::cmd("enc t").unwrap(), lk.clone(), rp).eval();
+        let code = pr.out.out.as_ref().unwrap().lock()[0].clone();
+        assert_eq!(code.len(), 6);
+        assert!(code.chars().all(|c| c.is_ascii_digit()), "not a code: {}", code);
+
+        // the sealed entry (dumped) loaded elsewhere decrypts only with the right
+        // master: a wrong one fails the AEAD tag — no code, a clear error.
+        let dump = LKEval::news(Command::Dump(Some("-".to_string())), lk.clone()).eval();
+        let line = dump.out.out.as_ref().unwrap().lock()[0].clone();
+        let lk2 = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let rp_wrong = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("WRONG".to_string()) } else { Ok("".to_string()) }
+        };
+        LKEval::newd(command_parser::cmd(&line).unwrap(), lk2.clone(), rp_wrong).eval();
+        let pr = LKEval::newd(command_parser::cmd("enc t").unwrap(), lk2.clone(), rp_wrong).eval();
+        assert!(pr.out.out.as_ref().unwrap().lock().is_empty(), "should not print a code with the wrong master");
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("cannot decrypt")));
+    }
+
+    #[test]
+    fn totp_correct_hashes_derived_password_not_code() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("master".to_string()) } else { Ok("".to_string()) }
+        };
+        let addline = "add x t T 99 now #\"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP\"".to_string();
+        LKEval::newd(command_parser::cmd(&addline).unwrap(), lk.clone(), rp).eval();
+
+        // `correct <T>` hashes what cmd_enc returns (called with an INACTIVE out).
+        // That value must be the entry's stable R-mode derived password — the key
+        // that decrypts the seed — NEVER the time-varying 6-digit code.
+        let ev = LKEval::newd(Command::Noop, lk.clone(), rp);
+        let full = LKOut::new();
+        let inactive = LKOut::from_lkout(None, full.err.clone());
+        let (name, pass) = ev.cmd_enc(&inactive, &"t".to_string()).unwrap();
+        assert_eq!(name, "t");
+        let pwd = lk.lock().borrow().db.get("t").unwrap().clone();
+        assert_eq!(pass, pwd.lock().borrow().encode("master"), "correct must hash the derived password");
+        assert!(pass.contains(' '), "derived password is R-mode words, not a 6-digit code: {:?}", pass);
     }
 
     #[test]

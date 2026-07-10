@@ -1,4 +1,4 @@
-use base64;
+use base64::Engine as _;
 use sha1::{Digest, Sha1};
 use std::fmt::Write;
 use std::vec::Vec;
@@ -87,7 +87,7 @@ impl SKey {
             })
             .flatten()
             .collect();
-        base64::encode(flat_vec).trim_end_matches('=').to_string()
+        base64::engine::general_purpose::STANDARD.encode(flat_vec).trim_end_matches('=').to_string()
     }
 }
 

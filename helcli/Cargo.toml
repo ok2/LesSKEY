@@ -11,6 +11,7 @@ name = "hel"
 
 [dependencies]
 hel = { version = "0.1.0", path = "../hel" }
-rustyline = "10.0.0"
-ureq = { version = "2", features = ["json"] }   # blocking HTTP, rustls default — no openssl
+# ureq 3 is a full API rewrite of notion.rs (untestable without a live token);
+# stay on latest 2.x for now and migrate separately.
+ureq = { version = "2.12.1", features = ["json"] }   # blocking HTTP, rustls default — no openssl
 serde_json = "1"

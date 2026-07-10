@@ -10,7 +10,7 @@ peg::parser! {
         pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / save_cmd() / save_def_cmd() / dump_cmd()) { c }
         pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / keep_cmd() / mv_cmd() / rm_cmd() / comment_cmd ()) { c }
         pub rule asides_cmd_list() -> Command<'input> = space()* c:(help_cmd() / source_cmd() / set_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
-        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
+        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / reveal_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
         pub rule script() -> Vec<Command<'input>> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) ++ "\n" { c }
 
         rule space() -> &'input str = s:$(
@@ -73,7 +73,7 @@ peg::parser! {
                 _ => Err("unknown mode"),
             }
         }
-        rule rmode() -> Mode = m:$("R" / "r" / "U" / "u" / "N" / "n" / "C" / "c" / "H" / "h" / "B" / "b" / "D" / "d") {?
+        rule rmode() -> Mode = m:$("R" / "r" / "U" / "u" / "N" / "n" / "C" / "c" / "H" / "h" / "B" / "b" / "D" / "d" / "T" / "t") {?
             match m.to_uppercase().as_str() {
                 "R" => Ok(Mode::Regular),
                 "N" => Ok(Mode::NoSpace),
@@ -82,6 +82,7 @@ peg::parser! {
                 "H" => Ok(Mode::Hex),
                 "B" => Ok(Mode::Base64),
                 "D" => Ok(Mode::Decimal),
+                "T" => Ok(Mode::Totp),
                 _ => Err("unknown mode"),
             }
         }
@@ -117,6 +118,8 @@ peg::parser! {
         // `enc` takes the rest of the line (like `pb`): a bare name/id, or a
         // sub-command whose output names the entry to encode (e.g. `enc ld re`).
         rule enc_cmd() -> Command<'input> = "enc" _ e:$(([' '..='~'])+) { Command::Enc(e.to_string()) }
+        // `reveal <name>` decrypts and shows an entry's inline #/! blobs.
+        rule reveal_cmd() -> Command<'input> = "reveal" _ name:word() { Command::Reveal(name) }
         rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
         rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
@@ -317,6 +320,33 @@ add t3 C 99 2022-12-14
         assert_eq!(h.name, "github");
         assert_eq!(h.length, Some(20));
         assert_eq!(h.mode, Mode::Regular);
+    }
+
+    #[test]
+    fn parse_totp_mode_test() {
+        // uppercase T is the mode; the lowercase `t` here is the NAME (positional).
+        let p = command_parser::name("x t T 99 now").unwrap();
+        assert_eq!(p.prefix, Some("x".to_string()));
+        assert_eq!(p.name, "t");
+        assert_eq!(p.mode, Mode::Totp);
+        // lowercase t parses as the mode too (consistent with r/n/c/h/b/d).
+        let p2 = command_parser::name("foo t 99 2020-01-01").unwrap();
+        assert_eq!(p2.name, "foo");
+        assert_eq!(p2.mode, Mode::Totp);
+        // a bare name `t` with no mode token stays a name (default R).
+        let p3 = command_parser::name("t").unwrap();
+        assert_eq!(p3.name, "t");
+        assert_eq!(p3.mode, Mode::Regular);
+        // an inline #"…" token survives parsing as one comment blob (with spaces).
+        let p4 = command_parser::name("x t T 99 now #\"otpauth://totp/x?secret=ABC&digits=6\"").unwrap();
+        assert_eq!(p4.mode, Mode::Totp);
+        assert_eq!(p4.comment, Some("#\"otpauth://totp/x?secret=ABC&digits=6\"".to_string()));
+    }
+
+    #[test]
+    fn parse_reveal_test() {
+        assert_eq!(command_parser::cmd("reveal github"), Ok(Command::Reveal("github".to_string())));
+        assert_eq!(Command::Reveal("github".to_string()).to_string(), "reveal github");
     }
 
     #[test]

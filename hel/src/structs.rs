@@ -104,6 +104,7 @@ pub enum Command<'a> {
     Mv(Name, Name),
     Rm(Name),
     Enc(Name),
+    Reveal(Name),
     Gen(u32, PasswordRef),
     Pass(Name, Option<String>),
     UnPass(Option<Name>),
@@ -130,6 +131,7 @@ impl<'a> PartialEq for Command<'a> {
             (Command::Mv(a, b), Command::Mv(x, y)) => a == x && b == y,
             (Command::Rm(s), Command::Rm(o)) => s == o,
             (Command::Enc(s), Command::Enc(o)) => s == o,
+            (Command::Reveal(s), Command::Reveal(o)) => s == o,
             (Command::Gen(a, b), Command::Gen(x, y)) => a == x && *b.lock() == *y.lock(),
             (Command::Pass(a, b), Command::Pass(x, y)) => a == x && b == y,
             (Command::UnPass(s), Command::UnPass(o)) => s == o,
@@ -159,6 +161,7 @@ impl<'a> std::fmt::Display for Command<'a> {
             Command::Mv(a, b) => write!(f, "mv {} {}", a, b),
             Command::Rm(s) => write!(f, "rm {}", s),
             Command::Enc(s) => write!(f, "enc {}", s),
+            Command::Reveal(s) => write!(f, "reveal {}", s),
             Command::Gen(a, b) => write!(f, "gen{} {}", a, b.lock().borrow().to_string().trim()),
             Command::Pass(a, None) => write!(f, "pass {}", a),
             Command::Pass(a, Some(b)) => write!(f, "pass {} {}", a, b),
@@ -196,6 +199,10 @@ pub enum Mode {
     Base64,
     Base64Upcase,
     Decimal,
+    /// TOTP entry. Renders like `Regular` when used as a password (that rendered
+    /// value is the key that encrypts the entry's inline `#`/`!` blobs); `enc`
+    /// special-cases it to print the live RFC-6238 code instead.
+    Totp,
 }
 
 impl std::fmt::Display for Mode {
@@ -214,6 +221,7 @@ impl std::fmt::Display for Mode {
                 Mode::Base64 => "B",
                 Mode::Base64Upcase => "UB",
                 Mode::Decimal => "D",
+                Mode::Totp => "T",
             }
             .to_string()
         )

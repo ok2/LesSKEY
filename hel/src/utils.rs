@@ -61,10 +61,10 @@ pub mod rnd {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod rnd {
-    use rand::{thread_rng, Rng};
+    use rand::prelude::*;
 
     pub fn range(start: u32, end: u32) -> u32 {
-        thread_rng().gen_range(start..end)
+        rand::rng().random_range(start..end)
     }
 }
 
@@ -97,24 +97,23 @@ pub mod editor {
 
     #[derive(Debug)]
     pub struct Editor {
-        editor: rustyline::Editor<()>,
+        editor: rustyline::DefaultEditor,
     }
 
     impl Editor {
         pub fn new() -> EditorRef {
-            let mut editor = rustyline::Editor::<()>::new().unwrap();
-            editor.set_max_history_size(10000);
-            Arc::new(Mutex::new(Self {
-                editor: editor,
-            }))
+            let mut editor = rustyline::DefaultEditor::new().unwrap();
+            // These return Result in rustyline 11+; a full history is best-effort.
+            let _ = editor.set_max_history_size(10000);
+            Arc::new(Mutex::new(Self { editor }))
         }
 
         pub fn clear_history(&mut self) {
-            self.editor.clear_history();
+            let _ = self.editor.clear_history();
         }
 
         pub fn add_history_entry(&mut self, entry: &str) {
-            self.editor.add_history_entry(entry);
+            let _ = self.editor.add_history_entry(entry);
         }
 
         pub fn load_history<'a>(&mut self, fname: &str) -> Result<(), LKErr<'a>> {
@@ -133,7 +132,7 @@ pub mod editor {
         }
 
         pub fn readline<'a>(&mut self, prompt: &str) -> Result<String, LKErr<'a>> {
-            match self.editor.readline(&prompt) {
+            match self.editor.readline(prompt) {
                 Ok(line) => Ok(line),
                 Err(_) => Err(LKErr::Error("failed to read from input")),
             }

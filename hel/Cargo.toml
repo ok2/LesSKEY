@@ -11,27 +11,37 @@ crate-type = ["lib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-peg = "0.8.1"
-anyhow = "1.0.66"
-lazy_static = "1.4.0"
-regex = "1.6.0"
-thiserror = "1.0.37"
-anyerror = "0.1.7"
-sha1 = "0.10.5"
-base64 = "0.20.0"
-shlex = "1.1.0"
-shellexpand = "3.0.0"
-scopeguard = "1.1.0"
-parking_lot = "0.12.1"
-num-integer = "0.1.45"
+peg = "0.8.6"
+anyhow = "1.0.103"
+lazy_static = "1.5.0"
+regex = "1.13.0"
+thiserror = "2.0.18"
+anyerror = "0.1.13"
+sha1 = "0.11.0"
+base64 = "0.22.1"
+shlex = "2.0.1"
+shellexpand = "3.1.2"
+scopeguard = "1.2.0"
+parking_lot = "0.12.5"
+num-integer = "0.1.46"
+hmac = "0.13.0"
+sha2 = "0.11.0"
+# default-features off: their default `rand`/`getrandom` features pull getrandom
+# 0.4 (which needs a wasm_js backend cfg). We supply salt+nonce via getrandom 0.2
+# directly, so we only need `alloc`.
+argon2 = { version = "0.5", default-features = false, features = ["alloc"] }  # 0.6 is still an RC
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+data-encoding = "2.11.0"
+getrandom = "0.2"  # 0.3+ needs a wasm getrandom_backend cfg in build.sh; revisit
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-chrono = "0.4.23"
-rand = "0.8.5"
-home = "0.5.4"
-rustyline = "10.0.0"
-rpassword = "7.2.0"
+chrono = "0.4.45"
+rand = "0.10.2"
+home = "0.5.12"
+rustyline = "18.0.1"
+rpassword = "7.5.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2.83"
-chrono = { version = "0.4.23", features = ["wasmbind"] }
+wasm-bindgen = "0.2.126"
+chrono = { version = "0.4.45", features = ["wasmbind"] }
+getrandom = { version = "0.2", features = ["js"] }

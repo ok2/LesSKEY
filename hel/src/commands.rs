@@ -3,11 +3,13 @@ use sha1::{Digest, Sha1};
 use std::cmp::min;
 use std::collections::HashSet;
 
+use crate::crypto::{self, TokenType};
 use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{Name, Password, PasswordRef};
 use crate::repl::LKEval;
-use crate::structs::{config_flag, config_get, config_set, LKOut, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::structs::{config_flag, config_get, config_set, LKOut, Mode, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::totp;
 use crate::utils::editor::password;
 // call_cmd_with_input / get_cmd_args_from_command are only used by the native
 // (non-wasm) subprocess branches. copy_to_clipboards is native-only, so it is
@@ -45,8 +47,9 @@ ENTRIES
   rm <name>              remove an entry
 
 PASSWORDS
-  enc <name|id>          show an entry's password
+  enc <name|id>          show an entry's password (a mode-T entry shows its code)
   enc <command>          encode the last name a command prints (ls/ld/gen)
+  reveal <name>          decrypt an entry's inline #TOTP / !text blobs
   gen[N] <name>          N variants; name ends G.. (all) or X.. (random) [N=10]
   pb <command>           run a command, copy its output to the clipboard
   pass <name> [pw]       cache a master/override for an entry's subtree
@@ -72,6 +75,7 @@ case-insensitively as a regular expression.
 MODES (the [len][mode] in a descriptor — `help modes` for examples)
   R six words (default)   N hyphenated   C CamelCase   D decimal
   H hex   B base64        U.. = UPPERCASE variant (UR UN UH UB)
+  T TOTP one-time code (RFC 6238; needs an inline #\"…\" seed, see `help add`)
   <len> truncates the result to <len> characters (e.g. 20R, 12UB)";
 
 const HELP_NAME: &str = "\
@@ -92,10 +96,18 @@ descriptor — used by `add`, `gen`, and every line of the dump/`save` format:
             becomes the master for this entry (chained). The root master is the
             entry `/`, prompted once or set with `pass /`.
 
+  inline secrets — encrypted with THIS entry's own derived password (so they
+  unlock from the master + record, and inherit ^parent):
+    #\"<base32 | otpauth://…>\"   a TOTP seed; use with mode T, `enc` shows the code
+    !\"<text>\"                    an encrypted note; read it back with `reveal`
+  On add/comment these are sealed in place to `#<blob>`/`!<blob>` — the plaintext
+  is never written to the catalog or history. `reveal <name>` decrypts them.
+
   examples
     add github
     add github 20UR 2024-01-01 me@example.com ^work
-    add #W9 ableton 99 2020-12-09 license note";
+    add #W9 ableton 99 2020-12-09 license note
+    add x totp T 99 now #\"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP\" ^important";
 
 const HELP_MODES: &str = "\
 modes — output form; prefix with a length to truncate (e.g. 20R). For one fixed
@@ -137,7 +149,17 @@ result instead:
   set hel_enc_strict 1     # multiple candidates become an error
 
 The password goes to stdout, notes/warnings to stderr, so `pb enc …` copies
-only the password. See `help pb`, `help gen`.";
+only the password. For a mode-`T` entry, `enc` decrypts the inline seed and
+prints the current TOTP code instead. See `help pb`, `help gen`, `help reveal`.";
+
+const HELP_REVEAL: &str = "\
+reveal <name>   decrypt and print an entry's inline blobs to stdout: a `#` TOTP
+                token as its stored otpauth URI / secret, and any `!` token as
+                its text. The key is the entry's own derived password (same as
+                `enc`), so `pb reveal <name>` copies the plaintext.
+
+Add secrets with `add`/`comment` using `#\"<base32|otpauth://…>\"` (TOTP, mode T)
+or `!\"<text>\"`; they are encrypted in place and never stored in the clear.";
 
 const HELP_GEN: &str = "\
 gen[N] <name>   show N variants of an entry, sorted by password length.
@@ -247,9 +269,10 @@ impl<'a> LKEval<'a> {
         let text: &str = match topic.as_deref().map(str::to_lowercase).as_deref() {
             None => HELP_OVERVIEW,
             Some("add" | "name" | "desc" | "descriptor" | "entry" | "parent") => HELP_NAME,
-            Some("modes" | "mode") => HELP_MODES,
+            Some("modes" | "mode" | "totp") => HELP_MODES,
             Some("ls" | "ld" | "list") => HELP_LS,
             Some("enc") => HELP_ENC,
+            Some("reveal") => HELP_REVEAL,
             Some("gen") => HELP_GEN,
             Some("pb") => HELP_PB,
             Some("pass" | "unpass") => HELP_PASS,
@@ -438,8 +461,8 @@ impl<'a> LKEval<'a> {
 
     pub fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, String)> {
         let root_folder = "/".to_string();
-        let (name, pass) = if name == "/" && self.state.lock().borrow().secrets.contains_key(&root_folder) {
-            (root_folder.to_string(), self.state.lock().borrow().secrets.get(&root_folder).unwrap().to_string())
+        let (name, pass, pwd_opt) = if name == "/" && self.state.lock().borrow().secrets.contains_key(&root_folder) {
+            (root_folder.to_string(), self.state.lock().borrow().secrets.get(&root_folder).unwrap().to_string(), None)
         } else {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
@@ -450,10 +473,13 @@ impl<'a> LKEval<'a> {
             };
             let name = pwd.lock().borrow().name.to_string();
             if self.state.lock().borrow().secrets.contains_key(&name) {
-                (name.clone(), self.state.lock().borrow().secrets.get(&name).unwrap().to_string())
+                (name.clone(), self.state.lock().borrow().secrets.get(&name).unwrap().to_string(), Some(pwd))
             } else {
                 match self.read_master(&out, pwd.clone(), true) {
-                    Some(sec) => (name.clone(), pwd.lock().borrow().encode(sec.as_str())),
+                    Some(sec) => {
+                        let p = pwd.lock().borrow().encode(sec.as_str());
+                        (name.clone(), p, Some(pwd))
+                    }
                     None => {
                         out.e(format!("error: master for {} not found", name));
                         return None;
@@ -462,10 +488,133 @@ impl<'a> LKEval<'a> {
             }
         };
         if out.active() {
-            out.o(pass.clone());
+            let is_totp = pwd_opt.as_ref().map_or(false, |p| p.lock().borrow().mode == Mode::Totp);
+            if is_totp {
+                // Print the live code (from the decrypted seed) instead of `pass`.
+                self.cmd_enc_totp(out, pwd_opt.as_ref().unwrap(), &pass);
+            } else {
+                out.o(pass.clone());
+            }
+            // Trust-check the DERIVED PASSWORD (`pass` — the value that also decrypts
+            // a T entry's seed), NEVER the TOTP code. The code is time-varying and is
+            // only printed, never hashed; `pass` is the stable R-mode password. So
+            // `correct <T>` stores this password's hash and `enc <T>` warns on a
+            // mistyped master, exactly like every other mode.
             self.cmd_correct(&out, &name, true, Some(pass.clone()));
         }
         Some((name, pass))
+    }
+
+    /// A TOTP entry's `enc`: decrypt its first `#` token with `passphrase` (the
+    /// entry's own derived password) and print the current RFC-6238 code.
+    fn cmd_enc_totp(&self, out: &LKOut, pwd: &PasswordRef, passphrase: &str) {
+        let name = pwd.lock().borrow().name.clone();
+        let seq = pwd.lock().borrow().seq;
+        let comment = pwd.lock().borrow().comment.clone();
+        let armor = comment
+            .as_deref()
+            .map(inline_tokens)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(t, _)| *t == TokenType::Totp)
+            .map(|(_, a)| a);
+        let armor = match armor {
+            Some(a) => a,
+            None => {
+                out.e(format!("error: {} has no encrypted TOTP token (add one with #\"otpauth://…\")", name));
+                return;
+            }
+        };
+        match crypto::open(TokenType::Totp, &armor, passphrase, &name, seq) {
+            Ok(plain) => match totp::parse(&plain) {
+                Ok(t) => out.o(t.code_at(now_unix())),
+                Err(e) => out.e(format!("error: bad TOTP data in {}: {}", name, e)),
+            },
+            Err(e) => out.e(format!("error: cannot decrypt TOTP for {}: {}", name, e)),
+        }
+    }
+
+    /// `reveal <name>`: decrypt and print every `#`/`!` blob in an entry's comment
+    /// (a TOTP `#` shows its otpauth URI / secret; a `!` shows its text).
+    pub fn cmd_reveal(&self, out: &LKOut, name: &String) {
+        let pwd = match self.get_password(name) {
+            Some(p) => p,
+            None => {
+                out.e(format!("error: name {} not found", name));
+                return;
+            }
+        };
+        let ename = pwd.lock().borrow().name.clone();
+        let seq = pwd.lock().borrow().seq;
+        let comment = match pwd.lock().borrow().comment.clone() {
+            Some(c) => c,
+            None => {
+                out.e(format!("error: {} has no encrypted tokens", ename));
+                return;
+            }
+        };
+        let tokens = inline_tokens(&comment);
+        if tokens.is_empty() {
+            out.e(format!("error: {} has no encrypted tokens", ename));
+            return;
+        }
+        let cached = self.state.lock().borrow().secrets.get(&ename).cloned();
+        let passphrase = match cached {
+            Some(p) => p,
+            None => match self.read_master(out, pwd.clone(), true) {
+                Some(sec) => pwd.lock().borrow().encode(sec.as_str()),
+                None => {
+                    out.e(format!("error: master for {} not found", ename));
+                    return;
+                }
+            },
+        };
+        for (ttype, armor) in tokens {
+            match crypto::open(ttype, &armor, &passphrase, &ename, seq) {
+                Ok(plain) => out.o(plain),
+                Err(e) => out.e(format!("error: cannot decrypt {} token in {}: {}", ttype.ch(), ename, e)),
+            }
+        }
+    }
+
+    /// Encrypt any `#"..."`/`!"..."` markers in `pwd`'s comment in place, keyed by
+    /// the entry's own derived password (`encode()`). Returns Ok(true) if markers
+    /// were present. On failure the plaintext is REDACTED (never persisted) and
+    /// Err is returned — so a missing master or a malformed marker can never leak
+    /// a secret into the db, history, or dump.
+    pub fn encrypt_inline_tokens(&self, out: &LKOut, pwd: &PasswordRef) -> Result<bool, ()> {
+        let comment = match pwd.lock().borrow().comment.clone() {
+            Some(c) => c,
+            None => return Ok(false),
+        };
+        if !comment.contains("#\"") && !comment.contains("!\"") {
+            return Ok(false);
+        }
+        let name = pwd.lock().borrow().name.clone();
+        let seq = pwd.lock().borrow().seq;
+        let master = match self.read_master(out, pwd.clone(), true) {
+            Some(m) => m,
+            None => {
+                pwd.lock().borrow_mut().comment = Some(crypto::sanitize_for_history(&comment));
+                out.e(format!(
+                    "error: master required to encrypt {}'s inline secret; secret dropped — re-add with the master available",
+                    name
+                ));
+                return Err(());
+            }
+        };
+        let passphrase = pwd.lock().borrow().encode(&master);
+        match seal_inline_markers(&comment, &passphrase, &name, seq) {
+            Ok(sealed) => {
+                pwd.lock().borrow_mut().comment = Some(sealed);
+                Ok(true)
+            }
+            Err(_) => {
+                pwd.lock().borrow_mut().comment = Some(crypto::sanitize_for_history(&comment));
+                out.e(format!("error: failed to encrypt {}'s inline secret; secret dropped", name));
+                Err(())
+            }
+        }
     }
 
     /// `enc <arg>`: pick which entry to encode, then encode it. Abstract, like
@@ -819,7 +968,7 @@ impl<'a> LKEval<'a> {
         let mut sha1 = Sha1::new();
         sha1.update(name.to_string());
         sha1.update(&pwd);
-        let encpwd = format!("{:x}", sha1.finalize());
+        let encpwd: String = sha1.finalize().iter().map(|b| format!("{:02x}", b)).collect();
         if check {
             if data.contains(&encpwd) {
                 return;
@@ -940,4 +1089,61 @@ impl<'a> LKEval<'a> {
             }
         }
     }
+}
+
+/// Current unix time in seconds (native + wasm via chrono/wasmbind).
+fn now_unix() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+/// The armored payloads of a comment's inline `#`/`!` blobs (whitespace-delimited
+/// words whose remainder decodes as a hel blob). `#hashtag`-style words are skipped.
+fn inline_tokens(comment: &str) -> Vec<(TokenType, String)> {
+    let mut v = Vec::new();
+    for w in comment.split_whitespace() {
+        let (ttype, rest) = match w.chars().next() {
+            Some('#') => (TokenType::Totp, &w[1..]),
+            Some('!') => (TokenType::Text, &w[1..]),
+            _ => continue,
+        };
+        if crypto::looks_like_blob(rest) {
+            v.push((ttype, rest.to_string()));
+        }
+    }
+    v
+}
+
+/// Replace every `#"..."`/`!"..."` marker in `comment` with its armored, encrypted
+/// token. Errs on an unterminated quote so the caller can redact instead of persist.
+fn seal_inline_markers(
+    comment: &str,
+    passphrase: &str,
+    name: &str,
+    seq: u32,
+) -> Result<String, crypto::CryptoError> {
+    let mut out = String::with_capacity(comment.len());
+    let mut chars = comment.chars().peekable();
+    while let Some(c) = chars.next() {
+        if (c == '#' || c == '!') && chars.peek() == Some(&'"') {
+            let ttype = if c == '#' { TokenType::Totp } else { TokenType::Text };
+            chars.next(); // opening quote
+            let mut inner = String::new();
+            let mut closed = false;
+            while let Some(nc) = chars.next() {
+                if nc == '"' {
+                    closed = true;
+                    break;
+                }
+                inner.push(nc);
+            }
+            if !closed {
+                return Err(crypto::CryptoError::Armor);
+            }
+            out.push(c);
+            out.push_str(&crypto::seal(ttype, &inner, passphrase, name, seq)?);
+        } else {
+            out.push(c);
+        }
+    }
+    Ok(out)
 }
