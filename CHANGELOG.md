@@ -73,6 +73,9 @@ release stamp.
 - `gen` table alignment with `$` (unfolded) names: the password column now grows
   to the widest listed password (15-word values overflowed the fixed 36-char
   column); narrow listings keep the classic layout.
+- Hierarchy climb (web): a root master entered at the climb prompt is cached for
+  the session (like `pass /`) instead of being written into the visible master
+  field — the field only ever shows what you typed there yourself.
 - Console masking + secret redaction (web): wide `$` (unfolded) passwords in
   `gen`/`rnd` output are now masked — the widened column had slipped past the fixed
   36-char mask window and rendered in the clear, and `rnd` rows were not masked at

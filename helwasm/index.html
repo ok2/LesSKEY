@@ -527,8 +527,12 @@
             if (lvl.startsWith("+")) { toast('"' + lvl + '" is an independent root — its password is required'); return; }
             continue;                         // blank → ask the base's base
           }
-          if (lvl === "/") { masterEl().value = pw; appliedMaster = null; } // root via the field
-          else hel_command("pass " + lvl + " " + pw); // cache the intermediate secret
+          // Cache the entered password in the session (same as the console `pass`
+          // command) — for the root "/" too. The visible master field stays EMPTY:
+          // what was typed is a base's password, not necessarily "the master", and
+          // a filled field would wrongly suggest it derives this entry directly.
+          hel_command("pass " + lvl + " " + pw);
+          persist(); // `pass` marks the level correct — keep that hash
           break;
         }
         quickGen(false);
