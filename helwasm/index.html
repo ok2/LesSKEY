@@ -327,6 +327,14 @@
         return blocks.length ? blocks.join("\n") : txt;
       }
 
+      // Redact the secret a `pass <name> <pw>` / `set <name> <value>` long form carries,
+      // mirroring hel's command Display (`pass name ***`). `pass <name>` (no value) and
+      // `unpass` are untouched. Used for the console echo AND to keep secrets out of the
+      // persisted command history.
+      function redactCmd(cmd) {
+        return cmd.replace(/^(\s*(?:pass|set)\s+\S+)\s+.+$/, "$1 ***");
+      }
+
       // ls-style name autocomplete for #qname. hel_names reads db.keys() only, so it
       // never mutates the catalog or ls state (quick-gen stays stateless). Only offers
       // suggestions while typing the NAME (no whitespace yet), so it doesn't fight the
@@ -579,29 +587,40 @@
         out.appendChild(div);
         scrollBottom();
       }
-      // gen data line: {:>3} {:>36} {:>4} {}  → key(0..3) ' ' pass(4..40) ' ' len(41..45) ' ' name(46..)
-      // Return the column split so we mask ONLY the password (never the header).
-      function parseGenLine(line) {
-        if (line.length < 46) return null;
-        const lenStr = line.slice(41, 45).trim();
-        if (!/^\d+$/.test(lenStr)) return null; // header "Len" → not numeric → plain
+      // gen data row: `{:>3} {:>W} {:>4} {name}` — the password column width W is
+      // DYNAMIC (grows to the widest listed password), so `passEnd` (the end index of
+      // the W-wide field) is derived once from the header. The password is the last
+      // `len` chars of that field; mask ONLY it (never the header or the name).
+      function parseGenLine(line, passEnd) {
+        if (passEnd < 5 || line.length < passEnd + 6) return null;
+        const lenStr = line.slice(passEnd + 1, passEnd + 5).trim();
+        if (!/^\d+$/.test(lenStr)) return null;          // header row / non-data → plain
         const len = parseInt(lenStr, 10);
-        if (len <= 0 || len > 36) return null;
-        return { prefix: line.slice(0, 40 - len), secret: line.slice(40 - len, 40), suffix: line.slice(40) };
+        if (len <= 0 || len > passEnd - 4) return null;   // must fit inside the field
+        if (!line.slice(0, 3).trim()) return null;        // header has an empty key
+        return { prefix: line.slice(0, passEnd - len), secret: line.slice(passEnd - len, passEnd), suffix: line.slice(passEnd) };
       }
       function consoleRun(cmd) {
-        appendLine('<span class="cmd">&gt; ' + esc(cmd) + "</span>");
+        appendLine('<span class="cmd">&gt; ' + esc(redactCmd(cmd)) + "</span>");
         const out = hel_command(cmd);
         persist();
         if (!out) return;
         const verb = cmd.trim().split(/\s+/)[0];
         const isGen = /^gen\d*$/.test(verb); // gen, gen3, gen10, …
         const isEnc = verb === "enc";
-        for (const line of out.split("\n")) {
+        const lines = out.split("\n");
+        // The gen password column width is dynamic; derive where the password field
+        // ends from the header row ("… Password  Len  Name"), then mask each row's pw.
+        let genPassEnd = -1;
+        if (isGen) {
+          const hdr = lines.find((l) => l.includes("Password") && l.includes("Len") && l.includes("Name"));
+          if (hdr) { const li = hdr.indexOf("Len"); if (li > 1) genPassEnd = li - 2; }
+        }
+        for (const line of lines) {
           if (/^(warning|error):/.test(line)) {
             appendLine(esc(line), "err");
           } else if (isGen) {
-            const p = parseGenLine(line);
+            const p = parseGenLine(line, genPassEnd);
             if (!p) { appendLine(esc(line) || "&nbsp;"); continue; }
             const frag = document.createDocumentFragment();
             frag.appendChild(document.createTextNode(p.prefix));
@@ -790,9 +809,13 @@
             const v = ci.value.trim();
             ci.value = "";
             if (!v) return;
-            if (history[history.length - 1] !== v) history.push(v);
-            if (history.length > 300) history.shift();
-            localStorage.setItem("hel:" + HKEY, JSON.stringify(history));
+            // Never persist a secret-bearing command (`pass name pw`, `set name val`)
+            // to the on-disk history.
+            if (redactCmd(v) === v) {
+              if (history[history.length - 1] !== v) history.push(v);
+              if (history.length > 300) history.shift();
+              localStorage.setItem("hel:" + HKEY, JSON.stringify(history));
+            }
             hi = history.length;
             draft = "";
             const pm = v.match(/^pass\s+(\S+)\s*$/); // `pass <name>` → ask in an overlay

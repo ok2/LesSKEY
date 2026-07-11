@@ -64,6 +64,12 @@ release stamp.
 - `gen` table alignment with `$` (unfolded) names: the password column now grows
   to the widest listed password (15-word values overflowed the fixed 36-char
   column); narrow listings keep the classic layout.
+- Console masking + secret redaction (web): wide `$` (unfolded) passwords in `gen`
+  output are now masked — the widened column had slipped past the fixed 36-char
+  mask window and rendered in the clear. The web parser now derives the password
+  column from the header row. `pass`/`set` long forms are also redacted in the
+  console echo (`pass name ***`) and are never written to the persisted command
+  history.
 
 ## [1.1.0] - 2026-06-14 — Updates itself, works offline
 
