@@ -158,6 +158,7 @@ impl<'a> LKEval<'a> {
                 }
                 None => out.e(format!("error: password {} not found", name)),
             },
+            Command::Reset(confirm) => self.cmd_reset(&out, confirm),
             Command::Enc(arg) => {
                 self.cmd_enc_arg(&out, arg);
             }
@@ -618,6 +619,32 @@ mod tests {
         let code = pr.out.out.as_ref().unwrap().lock()[0].clone();
         assert_eq!(code.len(), 6);
         assert!(code.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn reset_drops_catalog_only_with_confirmation() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let rp = |_: String| -> std::io::Result<String> { Ok("".to_string()) };
+        LKEval::newd(command_parser::cmd("add one R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
+        LKEval::newd(command_parser::cmd("add two R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
+        LKEval::news(Command::Pass("/".to_string(), Some("m".to_string())), lk.clone()).eval();
+
+        // bare `reset` only hints; nothing is dropped
+        let pr = LKEval::newd(command_parser::cmd("reset").unwrap(), lk.clone(), rp).eval();
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("reset yes")));
+        assert_eq!(lk.lock().borrow().db.len(), 2);
+
+        // `reset yes` empties db + listing but keeps cached masters
+        let pr = LKEval::newd(command_parser::cmd("reset yes").unwrap(), lk.clone(), rp).eval();
+        assert!(pr.out.out.as_ref().unwrap().lock().iter().any(|l| l.contains("dropped 2 entries")));
+        assert_eq!(lk.lock().borrow().db.len(), 0);
+        assert_eq!(lk.lock().borrow().ls.len(), 0);
+        assert_eq!(lk.lock().borrow().secrets[&"/".to_string()], "m");
+
+        // reimport works cleanly after the reset (no "already exist")
+        let pr = LKEval::newd(command_parser::cmd("add one R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
+        assert!(pr.out.err.as_ref().unwrap().lock().is_empty());
+        assert_eq!(lk.lock().borrow().db.len(), 1);
     }
 
     #[test]

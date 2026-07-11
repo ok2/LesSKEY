@@ -8,7 +8,7 @@ peg::parser! {
     pub grammar command_parser() for str {
         pub rule cmd() -> Command<'input> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) { c }
         pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / save_cmd() / save_def_cmd() / dump_cmd()) { c }
-        pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / keep_cmd() / mv_cmd() / rm_cmd() / comment_cmd ()) { c }
+        pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / keep_cmd() / mv_cmd() / rm_cmd() / reset_cmd() / comment_cmd ()) { c }
         pub rule asides_cmd_list() -> Command<'input> = space()* c:(help_cmd() / source_cmd() / set_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
         pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / reveal_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
         pub rule script() -> Vec<Command<'input>> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) ++ "\n" { c }
@@ -121,6 +121,9 @@ peg::parser! {
         // `reveal <name>` decrypts and shows an entry's inline #/! blobs.
         rule reveal_cmd() -> Command<'input> = "reveal" _ name:word() { Command::Reveal(name) }
         rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
+        // `reset` drops the whole in-memory catalog; requires the literal
+        // confirmation word (`reset yes`) at eval time.
+        rule reset_cmd() -> Command<'input> = "reset" confirm:(_ w:word() { w })? { Command::Reset(confirm) }
         rule comment_cmd() -> Command<'input> = "comment" _ name:word() c:comment()? { Command::Comment(name, c) }
     }
 }
@@ -341,6 +344,15 @@ add t3 C 99 2022-12-14
         let p4 = command_parser::name("x t T 99 now #\"otpauth://totp/x?secret=ABC&digits=6\"").unwrap();
         assert_eq!(p4.mode, Mode::Totp);
         assert_eq!(p4.comment, Some("#\"otpauth://totp/x?secret=ABC&digits=6\"".to_string()));
+    }
+
+    #[test]
+    fn parse_reset_test() {
+        assert_eq!(command_parser::cmd("reset"), Ok(Command::Reset(None)));
+        assert_eq!(command_parser::cmd("reset yes"), Ok(Command::Reset(Some("yes".to_string()))));
+        assert_eq!(Command::Reset(Some("yes".to_string())).to_string(), "reset yes");
+        // an entry named reset* is still addressable through other commands
+        assert_eq!(command_parser::cmd("enc reset"), Ok(Command::Enc("reset".to_string())));
     }
 
     #[test]

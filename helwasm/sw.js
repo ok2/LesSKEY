@@ -7,7 +7,7 @@
 // VERSION is replaced by build.sh with a content hash of the shipped files, so the
 // browser sees a byte-changed worker — and runs its update check — exactly when the
 // app's bytes actually change, and never needlessly otherwise.
-const VERSION = "f3b20638eec8";
+const VERSION = "35080c5176f6";
 const CACHE = `lesskey-${VERSION}`;
 
 // App shell: every static file needed to run fully offline. Paths are relative to

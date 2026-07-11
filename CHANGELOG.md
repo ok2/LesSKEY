@@ -39,6 +39,10 @@ release stamp.
 - **Markdown import.** The Import box accepts a full markdown paste (e.g. a whole
   Notion page whose `dump` is split across fenced code blocks): only the code-block
   contents are imported, in order. Raw command text still works unchanged.
+- **`reset` command.** `reset yes` drops the whole in-memory catalog for a clean
+  reimport (`source` right after — cached masters are kept, so inline secrets
+  seal without re-prompting). Nothing saved changes until the next `save`; a
+  bare `reset` only prints the confirmation hint.
 - **Hierarchy password prompt in the form.** Generating a `^parent`-derived name
   with an empty master field now walks the parent chain like the CLI's
   `read_master`: it asks for the immediate base's password, blank climbs to the

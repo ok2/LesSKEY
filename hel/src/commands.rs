@@ -45,6 +45,7 @@ ENTRIES
   mv <name> <folder>     move entry under <folder>  (folder `/` = top level)
   comment <name> [text]  set or clear the comment
   rm <name>              remove an entry
+  reset yes              drop the WHOLE catalog from memory (for a reimport)
 
 PASSWORDS
   enc <name|id>          show an entry's password (a mode-T entry shows its code)
@@ -234,6 +235,13 @@ comment <name> [text]   set the entry's comment to <text>, or clear it when no
                         text is given. The comment is searched by `ls`/`ld` and
                         shown in listings.";
 
+const HELP_RESET: &str = "\
+reset yes   drop the WHOLE in-memory catalog (every entry), e.g. before
+            reimporting with `source`. Nothing saved is touched until the next
+            `save`; cached masters (`pass`) and correct-hashes are kept, so a
+            reimport seals inline secrets without re-prompting. A bare `reset`
+            only prints this confirmation hint.";
+
 const HELP_CATALOG: &str = "\
 The catalog is just a script of `add …` lines.
 
@@ -293,6 +301,7 @@ impl<'a> LKEval<'a> {
             Some("keep") => HELP_KEEP,
             Some("mv" | "move") => HELP_MV,
             Some("rm" | "remove") => HELP_RM,
+            Some("reset") => HELP_RESET,
             Some("comment") => HELP_COMMENT,
             Some("dump" | "save" | "source" | "catalog") => HELP_CATALOG,
             Some("set" | "config") => HELP_CONFIG,
@@ -497,6 +506,27 @@ impl<'a> LKEval<'a> {
                 }
             }
         }
+    }
+
+    /// `reset yes`: drop the WHOLE in-memory catalog (db + listing) for a clean
+    /// reimport. Cached `pass` secrets and correct-hashes are kept, so a
+    /// following `source` seals inline secrets without re-prompting; nothing
+    /// saved (file / Notion / localStorage) changes until the next `save`.
+    pub fn cmd_reset(&self, out: &LKOut, confirm: &Option<Name>) {
+        if confirm.as_deref() != Some("yes") {
+            out.e("reset drops the WHOLE in-memory catalog; confirm with `reset yes` (the saved catalog stays until `save`)".to_string());
+            return;
+        }
+        let n = {
+            let cell = self.state.lock();
+            let mut state = cell.borrow_mut();
+            let n = state.db.len();
+            state.db.clear();
+            state.ls.clear();
+            n
+        };
+        out.o(format!("dropped {} entries; the in-memory catalog is empty", n));
+        out.e("note: cached masters kept (`unpass` clears them); `source <file>` to reimport, `save` to persist".to_string());
     }
 
     pub fn cmd_comment(&self, out: &LKOut, name: &String, comment: &Option<String>) {
