@@ -48,6 +48,10 @@ release stamp.
   reimport (`source` right after — cached masters are kept, so inline secrets
   seal without re-prompting). Nothing saved changes until the next `save`; a
   bare `reset` only prints the confirmation hint.
+- **Bare `pass` = root master.** `pass` with no name now targets the root `/`
+  (like `pass /`), in helcli (parser default) and the web console overlay (which
+  titles it "Master password (root)"). `unpass` is unchanged (`unpass` still
+  forgets all cached masters).
 - **Hierarchy password prompt in the form.** Generating a `^parent`-derived name
   with an empty master field now walks the parent chain like the CLI's
   `read_master`: it asks for the immediate base's password, blank climbs to the
@@ -69,10 +73,11 @@ release stamp.
 - `gen` table alignment with `$` (unfolded) names: the password column now grows
   to the widest listed password (15-word values overflowed the fixed 36-char
   column); narrow listings keep the classic layout.
-- Console masking + secret redaction (web): wide `$` (unfolded) passwords in `gen`
-  output are now masked — the widened column had slipped past the fixed 36-char
-  mask window and rendered in the clear. The web parser now derives the password
-  column from the header row. `pass`/`set` long forms are also redacted in the
+- Console masking + secret redaction (web): wide `$` (unfolded) passwords in
+  `gen`/`rnd` output are now masked — the widened column had slipped past the fixed
+  36-char mask window and rendered in the clear, and `rnd` rows were not masked at
+  all. The web parser now derives the password column from the header row and masks
+  both `gen` and `rnd` tables. `pass`/`set` long forms are also redacted in the
   console echo (`pass name ***`) and are never written to the persisted command
   history.
 

@@ -260,6 +260,7 @@
           { tag: "New", text: "The name field suggests matching entries from your saved catalog as you type, so re-entering a name is a tap." },
           { tag: "New", text: "A name that derives from a <code>^parent</code> now generates even without your root master: leave the master box empty and you're asked for the parent's password (blank climbs to its parent, and so on) — the same hierarchy walk as the command-line tool." },
           { tag: "New", text: "Import accepts a whole markdown page, not just raw commands: paste a full Notion page whose <code>dump</code> is split across code blocks and only the code blocks are read." },
+          { tag: "Improved", text: "<code>pass</code> on its own now sets the root master (same as <code>pass /</code>) — no name needed; the console prompt titles it “Master password (root)”. Consistent with the command-line tool." },
         ] },
         { version: "1.1.0", date: "2026-06-14", title: "Updates itself, works offline", changes: [
           { tag: "New", text: "The installed app now updates itself the next time you open it — no more removing and re-adding, and your saved catalog is kept across updates." },
@@ -607,7 +608,7 @@
         persist();
         if (!out) return;
         const verb = cmd.trim().split(/\s+/)[0];
-        const isGen = /^gen\d*$/.test(verb); // gen, gen3, gen10, …
+        const isGen = /^(gen|rnd)\d*$/.test(verb); // gen/rnd password-table rows (gen3, rnd5, …)
         const isEnc = verb === "enc";
         const lines = out.split("\n");
         // The gen password column width is dynamic; derive where the password field
