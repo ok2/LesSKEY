@@ -528,6 +528,92 @@ mod tests {
     }
 
     #[test]
+    fn plus_root_chain_stops_and_uses_entered_value() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // prompts: only `/` would answer — a `+` root must NEVER fall through to it
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("rootmaster".to_string()) } else { Ok("".to_string()) }
+        };
+        LKEval::newd(command_parser::cmd("add +bohr R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
+        LKEval::newd(command_parser::cmd("add sub R 99 2026-1-1 ^+bohr").unwrap(), lk.clone(), rp).eval();
+        let sub = lk.lock().borrow().db.get("sub").unwrap().clone();
+        assert_eq!(sub.lock().borrow().parent.as_ref().unwrap().lock().borrow().name, "+bohr");
+
+        // Blank at the `+bohr` prompt: chain STOPS with an error — no climb to `/`.
+        let pr = LKEval::newd(command_parser::cmd("enc sub").unwrap(), lk.clone(), rp).eval();
+        assert!(pr.out.out.as_ref().unwrap().lock().is_empty(), "must not derive via the root master");
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().any(|l| l.contains("independent root")));
+
+        // With the root's password entered (`pass`), the child derives from the
+        // ENTERED value directly (no encode of the + root in between).
+        LKEval::news(Command::Pass("+bohr".to_string(), Some("entered pw".to_string())), lk.clone()).eval();
+        let pr = LKEval::newd(command_parser::cmd("enc sub").unwrap(), lk.clone(), rp).eval();
+        let got = pr.out.out.as_ref().unwrap().lock()[0].clone();
+        assert_eq!(got, sub.lock().borrow().encode("entered pw"));
+
+        // `enc +bohr` prints the entered value itself (like `enc /`), not a derivation.
+        let pr = LKEval::newd(command_parser::cmd("enc +bohr").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock()[0], "entered pw");
+
+        // Uncached `+` root: the prompt asks for the root's OWN name and the
+        // entered value is used verbatim (and cached).
+        let rp2 = |p: String| -> std::io::Result<String> {
+            if p == "+solo" { Ok("solo pw".to_string()) } else { Ok("".to_string()) }
+        };
+        LKEval::newd(command_parser::cmd("add +solo R 99 2026-1-1").unwrap(), lk.clone(), rp2).eval();
+        let pr = LKEval::newd(command_parser::cmd("enc +solo").unwrap(), lk.clone(), rp2).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock()[0], "solo pw");
+        assert_eq!(lk.lock().borrow().secrets[&"+solo".to_string()], "solo pw");
+    }
+
+    #[test]
+    fn unfolded_subtree_chain_e2e() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "/" { Ok("rootmaster".to_string()) } else { Ok("".to_string()) }
+        };
+        LKEval::newd(command_parser::cmd("add $acct R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
+        LKEval::newd(command_parser::cmd("add sub R 99 2026-1-1 ^$acct").unwrap(), lk.clone(), rp).eval();
+
+        // The `$` base renders WIDE (15 words) from the root master…
+        let pr = LKEval::newd(command_parser::cmd("enc $acct").unwrap(), lk.clone(), rp).eval();
+        let base_pw = pr.out.out.as_ref().unwrap().lock()[0].clone();
+        let h = crate::skey::SKey::unfolded("$acct", 99, "rootmaster");
+        assert_eq!(base_pw, crate::skey::SKey::wide_words(&h).join(" "));
+
+        // …and the plain-named child inherits $-ness: wide render, chained off
+        // the base's WIDE password.
+        let pr = LKEval::newd(command_parser::cmd("enc sub").unwrap(), lk.clone(), rp).eval();
+        let sub_pw = pr.out.out.as_ref().unwrap().lock()[0].clone();
+        let hs = crate::skey::SKey::unfolded("sub", 99, &base_pw);
+        assert_eq!(sub_pw, crate::skey::SKey::wide_words(&hs).join(" "));
+        assert_eq!(sub_pw.split(' ').count(), 15);
+    }
+
+    #[test]
+    fn totp_under_plus_root_seals_and_reveals() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let rp = |p: String| -> std::io::Result<String> {
+            if p == "+vault" { Ok("vault master".to_string()) } else { Ok("".to_string()) }
+        };
+        let uri = "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP";
+        LKEval::newd(command_parser::cmd("add +vault R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
+        let addline = format!("add vt T 99 now #\"{}\" ^+vault", uri);
+        LKEval::newd(command_parser::cmd(&addline).unwrap(), lk.clone(), rp).eval();
+
+        // sealed, no plaintext; reveal + enc work off the + root's entered value
+        let pwd = lk.lock().borrow().db.get("vt").unwrap().clone();
+        let comment = pwd.lock().borrow().comment.clone().unwrap();
+        assert!(!comment.contains("JBSWY3DP") && !comment.contains("otpauth"));
+        let pr = LKEval::newd(command_parser::cmd("reveal vt").unwrap(), lk.clone(), rp).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().clone(), vec![uri.to_string()]);
+        let pr = LKEval::newd(command_parser::cmd("enc vt").unwrap(), lk.clone(), rp).eval();
+        let code = pr.out.out.as_ref().unwrap().lock()[0].clone();
+        assert_eq!(code.len(), 6);
+        assert!(code.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
     fn exec_cmd_pass() {
         let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
         let t1 = Password::from_password(Password::new(

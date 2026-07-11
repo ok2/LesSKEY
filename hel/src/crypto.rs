@@ -2,9 +2,12 @@
 //!
 //! A TOTP seed (mode `T`) or an `!`-text secret is stored inside a record's
 //! comment as an armored, authenticated blob. The encryption key is derived from
-//! the entry's own hel password (what `enc <name>` produces in Regular mode,
-//! prefix included) via argon2id — so a blob decrypts from master + record alone
-//! and inherits the `^`-hierarchy. See the crate design notes.
+//! the entry's UNFOLDED iterated-SHA-1 state (`Password::kek_material` — full
+//! 160 bits, hex; never the folded 64-bit rendering) via argon2id — so a blob
+//! decrypts from master + record alone, inherits the `^`-hierarchy, and keeps a
+//! strong master's entropy above the word-encoding's 64-bit fold. The KEK
+//! depends only on (name, seq, chain): mode/prefix/length edits never orphan
+//! a blob. See the crate design notes.
 //!
 //! Blob layout (before base64url armor):
 //! ```text
@@ -20,8 +23,10 @@ use data_encoding::BASE64URL_NOPAD;
 use thiserror::Error;
 
 const MAGIC: [u8; 2] = *b"hT";
-const VERSION: u8 = 1;
-const KDF_DEFAULT: u8 = 1;
+// v2 = KEK is the unfolded 160-bit derivation (v1 keyed off the folded encode();
+// no real v1 blobs exist — clean break, v1 rejected loudly as Version(1)).
+const VERSION: u8 = 2;
+const KDF_DEFAULT: u8 = 2;
 const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 24;
 const KEY_LEN: usize = 32;
@@ -74,12 +79,14 @@ impl TokenType {
 }
 
 fn kdf_params(id: u8) -> Result<Params, CryptoError> {
-    // id 1: OWASP argon2id baseline (19 MiB, t=2, p=1) — memory-hard enough to
-    // make brute-forcing hel's 64-bit derived value cost-prohibitive, yet light
-    // enough for the wasm/PWA target. New ids may raise cost without breaking
-    // old blobs (the id travels in the header).
+    // id 1: OWASP argon2id baseline (19 MiB, t=2, p=1) — the v1 default.
+    // id 2: 64 MiB, t=16, p=1 — ~0.5 s native on an M-series core, ~1 s as wasm
+    //   on a modern iPhone; sized so brute-forcing a folded 64-bit chain value
+    //   stays cost-prohibitive even for a well-funded attacker. New ids may
+    //   raise cost without breaking old blobs (the id travels in the header).
     let (m_kib, t, p) = match id {
         1 => (19_456u32, 2u32, 1u32),
+        2 => (65_536u32, 16u32, 1u32),
         other => return Err(CryptoError::KdfId(other)),
     };
     Params::new(m_kib, t, p, Some(KEY_LEN)).map_err(|_| CryptoError::Kdf)
@@ -228,6 +235,17 @@ mod tests {
         let a = seal(TokenType::Totp, "same", p, "n", 99).unwrap();
         let b = seal(TokenType::Totp, "same", p, "n", 99).unwrap();
         assert_ne!(a, b); // random salt+nonce -> distinct armor
+    }
+
+    #[test]
+    fn v1_blob_rejected_by_version() {
+        // A v1 blob (folded-encode KEK era) must fail LOUDLY as Version(1),
+        // never as a confusing Decrypt error.
+        let a = seal(TokenType::Totp, "s", "p", "n", 99).unwrap();
+        let mut blob = BASE64URL_NOPAD.decode(a.as_bytes()).unwrap();
+        blob[2] = 1;
+        let a1 = BASE64URL_NOPAD.encode(&blob);
+        assert_eq!(open(TokenType::Totp, &a1, "p", "n", 99), Err(CryptoError::Version(1)));
     }
 
     #[test]

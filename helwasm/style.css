@@ -237,20 +237,66 @@ input.mask.revealed { -webkit-text-security: none; }
 .console-out {
   font-family: var(--mono); font-size: 13.5px; line-height: 1.55;
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
-  padding: 14px; height: clamp(280px, 46vh, 560px);
+  padding: 14px; height: var(--console-h, clamp(280px, 46vh, 560px));
   overflow: auto; white-space: pre;            /* no wrap, scroll left/right */
+}
+@supports (height: 100dvh) {
+  .console-out { height: var(--console-h, clamp(280px, 46dvh, 560px)); }
 }
 .console-out > div { min-width: max-content; }
 .console-out .cmd { color: var(--ocean); font-weight: 500; }
 .console-out .err { color: var(--seal); }
 .console-out .muted { color: var(--muted); }
 .console-out .secret { font-size: 13.5px; vertical-align: baseline; }
+/* Drag grip: adjusts --console-h (desktop + in-flow mobile); persisted in JS. */
+.console-resize {
+  height: 14px; margin: 2px 0 -2px; cursor: ns-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.console-resize::before {
+  content: ""; width: 46px; height: 4px; border-radius: 999px;
+  background: var(--line); transition: background .15s;
+}
+.console-resize:hover::before { background: var(--ocean-2); }
 .console-in { display: flex; align-items: center; gap: 8px; margin-top: 10px;
   background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px; }
 .console-in:focus-within { border-color: var(--ocean); box-shadow: 0 0 0 3px rgba(27,65,97,0.12); }
 .console-in .prompt { font-family: var(--mono); color: var(--ocean); font-weight: 600; }
 .console-in input { border: none; box-shadow: none; padding: 9px 0; background: transparent; }
 .console-in input:focus { box-shadow: none; }
+
+/* Phones: a taller, viewport-fitting console by default. svh (not vh) so the iOS
+   toolbar can't clip it; dvh below tracks the live viewport where supported. */
+@media (max-width: 680px) {
+  .console-out { height: var(--console-h, clamp(240px, 60svh, 560px)); }
+}
+@supports (height: 100dvh) {
+  @media (max-width: 680px) {
+    .console-out { height: var(--console-h, clamp(240px, 64dvh, 560px)); }
+  }
+}
+
+/* Shell mode: console input focused on a phone → the console fills the space
+   above the software keyboard. Height + translateY come from visualViewport (JS,
+   inline); 100svh is only the no-visualViewport fallback. */
+@media (max-width: 680px) {
+  body.shell-focus { overflow: hidden; }         /* freeze the page behind it */
+  body.shell-focus .console-card {
+    position: fixed; inset: 0 0 auto 0; z-index: 60;
+    height: 100svh;                              /* JS overrides inline */
+    margin: 0; border-radius: 0; border-left: 0; border-right: 0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 8px; background: var(--paper);
+  }
+  body.shell-focus .console-card .eyebrow,
+  body.shell-focus .console-card h2,
+  body.shell-focus .console-card .hint,
+  body.shell-focus .console-resize { display: none; }
+  body.shell-focus .console-out {
+    flex: 1 1 auto; min-height: 0; height: auto; margin: 0;   /* grows, scrolls */
+  }
+  body.shell-focus .console-in { margin-top: 0; }
+}
 
 .toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);

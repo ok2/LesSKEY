@@ -43,6 +43,52 @@ impl SKey {
         vec![x.to_be_bytes().into_iter().collect(), y.to_be_bytes().into_iter().collect()]
     }
 
+    /// The UNFOLDED S/KEY value: SHA-1 iterated `seq+1` times over `name‖secret`,
+    /// keeping the full 160-bit digest at every step (no XOR-fold to 64 bits).
+    /// Used as encryption-key material: its entropy equals the input's (up to 160
+    /// bits), so an unfolded chain from a strong root stays strong, while today's
+    /// folded chain collapses to 64 bits (harmless here — just a narrower value).
+    /// Independent of mode/prefix/length, unlike `encode()`.
+    pub fn unfolded(password: &str, seq: u32, secret: &str) -> [u8; 20] {
+        let mut h = [0u8; 20];
+        h.copy_from_slice(&Sha1::digest(format!("{}{}", password, secret).as_bytes()));
+        for _ in 0..seq {
+            let mut next = [0u8; 20];
+            next.copy_from_slice(&Sha1::digest(h));
+            h = next;
+        }
+        h
+    }
+
+    /// Dictionary indices for a 20-byte unfolded value: the 160 bits MSB-first
+    /// in 11-bit chunks, zero-padded at the tail — 15 indices. No RFC-2289
+    /// parity; this is hel's extended encoding for `$` (unfolded) entries.
+    pub fn wide_dec(h: &[u8; 20]) -> [u16; 15] {
+        let mut out = [0u16; 15];
+        for (i, o) in out.iter_mut().enumerate() {
+            let mut v = 0u16;
+            for bit in i * 11..i * 11 + 11 {
+                let b = if bit < 160 { (h[bit / 8] >> (7 - bit % 8)) & 1 } else { 0 };
+                v = v << 1 | b as u16;
+            }
+            *o = v;
+        }
+        out
+    }
+
+    /// 15 dictionary words rendering the full 160-bit unfolded value.
+    pub fn wide_words(h: &[u8; 20]) -> [&'static str; 15] {
+        Self::wide_dec(h).map(|i| WORDS[i as usize])
+    }
+
+    pub fn wide_hex(h: &[u8; 20]) -> String {
+        h.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+
+    pub fn wide_b64(h: &[u8; 20]) -> String {
+        base64::engine::general_purpose::STANDARD.encode(h).trim_end_matches('=').to_string()
+    }
+
     pub fn to_dec(&self) -> [u32; 6] {
         let mut h: Vec<u32> = vec![0, 0];
         let mut parity = 0;
@@ -124,6 +170,36 @@ mod tests {
 
         let skey = SKey::new(&pwd, 300, &sec);
         assert_eq!(skey.to_dec(), [1375, 1256, 2010, 333, 33, 893]);
+    }
+
+    #[test]
+    fn unfolded_test() {
+        // Independently computed (python hashlib): sha1("test1my secret"),
+        // then 99 more sha1 rounds over the FULL 20-byte digest — same chain
+        // depth as the folded otp_sha1 (seq+1 hashes), but no 64-bit fold.
+        let h = SKey::unfolded("test1", 99, "my secret");
+        let hex: String = h.iter().map(|b| format!("{:02x}", b)).collect();
+        assert_eq!(hex, "fe8d7667b8e895933d69c585a04166ea999c1dd4");
+        // seq changes the value; determinism across calls
+        assert_ne!(SKey::unfolded("test1", 98, "my secret"), h);
+        assert_eq!(SKey::unfolded("test1", 99, "my secret"), h);
+    }
+
+    #[test]
+    fn wide_rendering_test() {
+        // Independently computed (python): 160 bits of the unfolded_test value,
+        // MSB-first 11-bit chunks zero-padded to 165 -> 15 dictionary indices.
+        let h = SKey::unfolded("test1", 99, "my secret");
+        assert_eq!(
+            SKey::wide_dec(&h),
+            [2036, 861, 1231, 910, 1098, 1612, 1965, 453, 1069, 16, 717, 1705, 1230, 119, 640]
+        );
+        assert_eq!(
+            SKey::wide_words(&h).join(" "),
+            "yale cove home deer garb otis wack rot four ana blow ruth holt do away"
+        );
+        assert_eq!(SKey::wide_hex(&h), "fe8d7667b8e895933d69c585a04166ea999c1dd4");
+        assert_eq!(SKey::wide_b64(&h), "/o12Z7jolZM9acWFoEFm6pmcHdQ");
     }
 }
 

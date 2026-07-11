@@ -60,6 +60,64 @@ pub fn hel_entry(name: String) -> String {
     }
 }
 
+/// Return catalog entry names beginning with `prefix`, one per line, sorted —
+/// the `ls`-style completion set for a typed name. Read-only: reads `db` keys
+/// only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and can
+/// never add to the catalog. Case-insensitive by default; a leading `(?-i)`
+/// forces case-sensitive, mirroring `ls`. Empty prefix returns every name.
+#[wasm_bindgen]
+pub fn hel_names(prefix: String) -> String {
+    let (case_sensitive, needle) = match prefix.strip_prefix("(?-i)") {
+        Some(rest) => (true, rest.trim_start()),
+        None => (false, prefix.as_str()),
+    };
+    let needle_lc = needle.to_lowercase();
+    let cell = STATE.lock();
+    let lk = cell.borrow();
+    let mut names: Vec<&String> = lk
+        .db
+        .keys()
+        .filter(|name| {
+            if case_sensitive {
+                name.starts_with(needle)
+            } else {
+                name.to_lowercase().starts_with(&needle_lc)
+            }
+        })
+        .collect();
+    names.sort(); // byte-lexicographic == cmd_ls's name.cmp
+    names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n")
+}
+
+/// Return the `^parent` chain of `name`, immediate parent first, one per line
+/// ("" if `name` is unknown or has no parent). These are exactly the entries
+/// `read_master` climbs through when deriving `name`: with no root master given,
+/// the UI prompts for each in turn (the name's base, then the base's base, …).
+/// Read-only; cycle-guarded.
+#[wasm_bindgen]
+pub fn hel_chain(name: String) -> String {
+    let cell = STATE.lock();
+    let lk = cell.borrow();
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cur = lk.db.get(&name).or_else(|| lk.ls.get(&name)).cloned();
+    while let Some(p) = cur {
+        let parent = p.lock().borrow().parent.clone();
+        match parent {
+            Some(pn) => {
+                let pname = pn.lock().borrow().name.to_string();
+                if !seen.insert(pname.clone()) {
+                    break; // cycle guard
+                }
+                out.push(pname);
+                cur = Some(pn);
+            }
+            None => break,
+        }
+    }
+    out.join("\n")
+}
+
 /// Run a whole multi-line script (every `add …` line, `set …`, etc.) against the
 /// shared state in one call. Used to bulk-import a pasted catalog (e.g. the text
 /// of the Notion page) and to load the persisted catalog from localStorage.

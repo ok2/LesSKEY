@@ -87,9 +87,26 @@
               <p>
                 After a name you can add a length and a mode. <code>R</code> is six memorable words
                 (the default); <code>C</code> camel; <code>H</code> hex; <code>B</code> base64;
-                <code>D</code> digits (<code>U…</code> = upper). For example, <code>github 20R</code>.
-                End a name with <code>^folder</code> to derive it from a parent; you still type only
-                your one master and the whole chain is computed.
+                <code>D</code> digits (<code>U…</code> = upper); <code>T</code> a TOTP one-time code
+                (RFC 6238). For example, <code>github 20R</code>. End a name with <code>^folder</code>
+                to derive it from a parent; you still type only your one master and the whole chain
+                is computed. Or leave the master box empty and you're asked for the parent's own
+                password instead (blank climbs to its parent, and so on).
+              </p>
+              <p>
+                A <code>T</code> entry carries an inline seed, written <code>#"otpauth://…"</code>
+                (or a bare base32 secret); <code>enc &lt;name&gt;</code> then prints its current code.
+                <code>!"a note"</code> stores an encrypted note. Both are sealed with a key derived
+                from the entry and its master chain — never kept in the clear — and
+                <code>reveal &lt;name&gt;</code> decrypts them.
+                Example: <code>add totp T 99 now #"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP"</code>.
+              </p>
+              <p>
+                A name starting with <code>+</code> (like <code>+vault</code>) is an independent
+                root: its password is entered, never derived, and the chain stops there — separate
+                master passwords for separate subtrees. A base starting with <code>$</code> (or
+                <code>+$</code>) makes its whole subtree derive the unfolded 160-bit value
+                (15 words instead of 6); set it once, everything below inherits.
               </p>
             </div>
           </div>
@@ -113,7 +130,8 @@
         <div class="fields">
           <div class="field">
             <label for="qname">Name (+ optional rules)</label>
-            <input type="text" id="qname" placeholder="github    or    github 20R 99 2024-01-01" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" autofocus />
+            <input type="text" id="qname" list="qnames" placeholder="github    or    github 20R 99 2024-01-01" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" autofocus />
+            <datalist id="qnames"></datalist>
           </div>
           <div class="field">
             <label for="master">Master password</label>
@@ -132,7 +150,7 @@
       </section>
 
       <!-- Console -->
-      <section class="card">
+      <section class="card console-card">
         <div class="eyebrow">Console</div>
         <h2>All commands</h2>
         <p class="hint">
@@ -142,6 +160,7 @@
           browser (localStorage). Generated passwords are masked; click to reveal.
         </p>
         <div class="console-out" id="cout"></div>
+        <div class="console-resize" role="separator" aria-orientation="horizontal" title="Drag to resize"></div>
         <div class="console-in">
           <span class="prompt">&gt;</span>
           <input type="text" id="cin" placeholder="type a command and press Enter" autocomplete="off" spellcheck="false" />
@@ -219,7 +238,7 @@
     </div>
 
     <script type="module">
-      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry } from "./pkg/helwasm.js";
+      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry, hel_names, hel_chain } from "./pkg/helwasm.js";
 
       const $ = (s) => document.querySelector(s);
       const masterEl = () => document.getElementById("master");
@@ -231,6 +250,14 @@
       // is { tag: "New" | "Improved", text }; `text` may hold inline <code> for command
       // names (authored/trusted content, rendered as HTML). `title` = the release theme.
       const CHANGELOG = [
+        { version: "1.2.0", date: "2026-07-10", title: "One-time codes, and a real shell on your phone", changes: [
+          { tag: "New", text: "Store time-based one-time codes (2FA): give an entry mode <code>T</code> and an inline <code>#&quot;otpauth://…&quot;</code> seed, then <code>enc</code> shows the current six-digit code. Seeds are encrypted with your master and never kept in the clear; <code>reveal</code> shows the original, and <code>!&quot;…&quot;</code> stores an encrypted note." },
+          { tag: "New", text: "Multiple master passwords: a name starting with <code>+</code> (like <code>+vault</code>) is an independent root — its password is entered, never derived, and the <code>^parent</code> chain stops there. Compartmentalize subtrees under separate masters." },
+          { tag: "New", text: "A base whose name starts with <code>$</code> (or <code>+$</code>) switches its whole subtree to the unfolded derivation: 15-word passwords carrying the full 160 bits, inherited by every entry below it." },
+          { tag: "Improved", text: "The console works as a proper shell on phones: it fits the screen, and while you type the output stays visible above the on-screen keyboard instead of hiding behind it. Tapping a password to reveal it keeps the keyboard and the shell open. Drag the handle under the output to resize it, and the height is remembered." },
+          { tag: "New", text: "The name field suggests matching entries from your saved catalog as you type, so re-entering a name is a tap." },
+          { tag: "New", text: "A name that derives from a <code>^parent</code> now generates even without your root master: leave the master box empty and you're asked for the parent's password (blank climbs to its parent, and so on) — the same hierarchy walk as the command-line tool." },
+        ] },
         { version: "1.1.0", date: "2026-06-14", title: "Updates itself, works offline", changes: [
           { tag: "New", text: "The installed app now updates itself the next time you open it — no more removing and re-adding, and your saved catalog is kept across updates." },
           { tag: "New", text: "Runs fully offline once installed; everything is cached on your device." },
@@ -286,6 +313,21 @@
       const stripNoise = (out) => out.split("\n").filter((l) => l && !/^(warning|error):/.test(l));
       const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+      // ls-style name autocomplete for #qname. hel_names reads db.keys() only, so it
+      // never mutates the catalog or ls state (quick-gen stays stateless). Only offers
+      // suggestions while typing the NAME (no whitespace yet), so it doesn't fight the
+      // "name + rules" spec once rules are added, and never dumps the whole catalog on
+      // an empty field. Capped for large catalogs.
+      const MAX_SUGGESTIONS = 50;
+      function refreshNameSuggestions() {
+        const dl = $("#qnames");
+        if (!dl) return;
+        const spec = $("#qname").value;
+        if (!spec || /\s/.test(spec)) { dl.replaceChildren(); return; } // empty/rules → none
+        const names = hel_names(spec).split("\n").filter(Boolean).slice(0, MAX_SUGGESTIONS);
+        dl.replaceChildren(...names.map((n) => { const o = document.createElement("option"); o.value = n; return o; }));
+      }
+
       let toastT;
       function toast(msg) {
         const t = $("#toast");
@@ -309,7 +351,25 @@
         s.className = "secret";
         s.textContent = text;
         s.title = "click to reveal";
-        s.addEventListener("click", () => s.classList.toggle("revealed"));
+        // In the iPhone console shell, tapping a secret must not blur #cin — that closes
+        // the keyboard and drops shell mode. Keep focus on the input by preventing the
+        // event that would move it, while still toggling the reveal:
+        //  - mousedown.preventDefault handles desktop + iOS's synthetic mouse path;
+        //  - touchend.preventDefault handles real iOS, where the blur rides the touch
+        //    itself (before the synthetic mouse events). Preventing touchend also
+        //    suppresses the synthetic click, so we toggle there and guard the click path.
+        const inShell = () => document.body.classList.contains("shell-focus");
+        const reveal = () => s.classList.toggle("revealed");
+        let touchHandled = false;
+        s.addEventListener("mousedown", (e) => { if (inShell()) e.preventDefault(); });
+        s.addEventListener("touchend", (e) => {
+          if (!inShell()) return;                 // outside the shell: let the click toggle
+          e.preventDefault();                     // keep the keyboard open; eats the synthetic click
+          touchHandled = true;
+          setTimeout(() => { touchHandled = false; }, 500);
+          reveal();
+        });
+        s.addEventListener("click", () => { if (!touchHandled) reveal(); });
         return s;
       }
 
@@ -411,6 +471,55 @@
         refreshSaveBtn(name, !!pw, correct);
         if (!pw && !silent) toast("No output");
       }
+      // ---- hierarchy climb: generate a ^parent-derived name when the master field
+      // is empty by asking for a base's password (blank climbs to the base's base, up
+      // to the root), mirroring the CLI's read_master prompts. Entered intermediate
+      // passwords are cached via `pass` (cleared when the master field changes). ----
+      function parentChainFor(spec, name) {
+        // ancestors, immediate base first. Prefer the stored chain; fall back to the
+        // ^parent typed in the spec so an unstored leaf whose base IS stored climbs.
+        let chain = hel_chain(name).split("\n").filter(Boolean);
+        if (!chain.length) {
+          const m = hel_parse(spec).match(/\^(\S+)\s*$/);
+          if (m) {
+            const p = hel_parse_name(m[1]);
+            if (p && hel_entry(p)) chain = [p, ...hel_chain(p).split("\n").filter(Boolean)];
+          }
+        }
+        return chain;
+      }
+      async function climbAndGen(spec, name) {
+        // A `+`-led base is an independent root: the chain stops there (its
+        // password is entered, never derived), so cut the chain at the first
+        // `+` and only offer the `/` root when no `+` root gates the way.
+        const chain = parentChainFor(spec, name);
+        const plusAt = chain.findIndex((n) => n.startsWith("+"));
+        const levels = plusAt >= 0 ? chain.slice(0, plusAt + 1) : [...chain, "/"];
+        for (const lvl of levels) {
+          const title = lvl === "/" ? "Master password (root)" : 'Password for "' + lvl + '"';
+          const pw = await promptPassword(title);
+          if (pw === null) return;            // Cancel → abort the climb
+          if (pw === "") {
+            if (lvl.startsWith("+")) { toast('"' + lvl + '" is an independent root — its password is required'); return; }
+            continue;                         // blank → ask the base's base
+          }
+          if (lvl === "/") { masterEl().value = pw; appliedMaster = null; } // root via the field
+          else hel_command("pass " + lvl + " " + pw); // cache the intermediate secret
+          break;
+        }
+        quickGen(false);
+      }
+      // Generate + copy — the explicit commit (Enter in master, Copy button). Falls
+      // back to the hierarchy climb when an empty master can't derive a ^parent name.
+      async function commitGen() {
+        const spec = $("#qname").value.trim();
+        const name = spec ? hel_parse_name(spec) : "";
+        quickGen(false);
+        if (!lastSecret && name && !masterEl().value && parentChainFor(spec, name).length) {
+          await climbAndGen(spec, name);
+        }
+        if (lastSecret) copyText(lastSecret); else toast("Nothing to copy");
+      }
       // One click advances the progressive button by one step (Store → Correct →
       // unmark). Each step is the same command you could type in the console.
       function saveStep() {
@@ -496,6 +605,7 @@
       // ---- pass overlay (a browser can't block for input, so collect the
       //      password in a modal, then run the long form `pass <name> <pw>`) ----
       let passPending = null;
+      let passResolve = null; // set → #passModal is in promise mode (quick-gen climb)
       function openPassOverlay(name) {
         passPending = name;
         $("#passTitle").textContent = 'Password for "' + name + '"';
@@ -503,12 +613,24 @@
         $("#passModal").classList.add("show");
         setTimeout(() => $("#passInput").focus(), 30);
       }
+      // Promise-based prompt reusing #passModal. Resolves to the typed string on OK
+      // (may be ""), or null on Cancel. Drives the quick-gen hierarchy climb.
+      function promptPassword(title) {
+        return new Promise((resolve) => {
+          passResolve = resolve;
+          $("#passTitle").textContent = title;
+          $("#passInput").value = "";
+          $("#passModal").classList.add("show");
+          setTimeout(() => $("#passInput").focus(), 30);
+        });
+      }
       function submitPass() {
-        const name = passPending;
-        passPending = null;
         const pw = $("#passInput").value;
         $("#passModal").classList.remove("show");
         $("#passInput").value = "";
+        if (passResolve) { const r = passResolve; passResolve = null; r(pw); return; }
+        const name = passPending;
+        passPending = null;
         $("#cin").focus(); // return to the command line after the overlay closes
         if (name == null) return;
         appendLine('<span class="cmd">&gt; pass ' + esc(name) + "</span>");
@@ -595,6 +717,7 @@
           liveT = setTimeout(() => quickGen(true), 70);
         };
         $("#qname").addEventListener("input", live);
+        $("#qname").addEventListener("input", refreshNameSuggestions);
         $("#master").addEventListener("input", live);
         window.addEventListener("resize", fitResult); // re-fit on rotate / width change
         // Enter in the name field jumps to the master field (its blur then normalises
@@ -625,19 +748,19 @@
         $("#master").addEventListener("keydown", (e) => {
           if (e.key !== "Enter") return;
           e.preventDefault();
-          quickGen(false);
-          if (lastSecret) copyText(lastSecret); else toast("Nothing to copy");
+          commitGen();
         });
-        $("#copy").onclick = () => (lastSecret ? copyText(lastSecret) : toast("Nothing to copy"));
+        $("#copy").onclick = commitGen;
         $("#saveBtn").onclick = saveStep;
 
         // pass overlay wiring
         $("#passOk").onclick = submitPass;
         $("#passInput").addEventListener("keydown", (e) => e.key === "Enter" && submitPass());
         $("#passCancel").onclick = () => {
-          passPending = null;
           $("#passModal").classList.remove("show");
           $("#passInput").value = "";
+          if (passResolve) { const r = passResolve; passResolve = null; r(null); return; }
+          passPending = null;
           $("#cin").focus();
         };
 
@@ -678,6 +801,60 @@
           }
         });
 
+        // ---- console: adjustable height + mobile keyboard-aware shell ----
+        const outEl = $("#cout");
+        const shellEl = $(".console-card");
+        const grip = $(".console-resize");
+        const vv = window.visualViewport;
+        const isPhone = () => matchMedia("(max-width: 680px)").matches;
+
+        // (a) drag-to-resize output height, persisted (desktop + in-flow mobile)
+        const HH = "_console_h";
+        const savedH = parseInt(localStorage.getItem("hel:" + HH) || "", 10);
+        if (savedH > 0) document.documentElement.style.setProperty("--console-h", savedH + "px");
+        let gy = 0, gh = 0;
+        grip.addEventListener("pointerdown", (e) => {
+          gy = e.clientY; gh = outEl.getBoundingClientRect().height;
+          grip.setPointerCapture(e.pointerId); e.preventDefault();
+        });
+        grip.addEventListener("pointermove", (e) => {
+          if (!grip.hasPointerCapture(e.pointerId)) return;
+          const h = Math.max(160, Math.min(window.innerHeight - 140, gh + (e.clientY - gy)));
+          document.documentElement.style.setProperty("--console-h", h + "px");
+          scrollBottom();
+        });
+        const endDrag = (e) => {
+          if (!grip.hasPointerCapture?.(e.pointerId)) return;
+          grip.releasePointerCapture(e.pointerId);
+          localStorage.setItem("hel:" + HH, String(Math.round(outEl.getBoundingClientRect().height)));
+        };
+        grip.addEventListener("pointerup", endDrag);
+        grip.addEventListener("pointercancel", endDrag);
+
+        // (b) shell mode: keep the console pinned above the keyboard while typing
+        function syncShell() {
+          if (!document.body.classList.contains("shell-focus")) return;
+          if (vv) {
+            shellEl.style.height = vv.height + "px";
+            shellEl.style.transform = "translateY(" + vv.offsetTop + "px)";
+          }
+          scrollBottom();                       // keep last line pinned as it resizes
+        }
+        ci.addEventListener("focus", () => {
+          if (!isPhone()) return;               // desktop keeps the in-flow card
+          document.body.classList.add("shell-focus");
+          requestAnimationFrame(syncShell);
+        });
+        ci.addEventListener("blur", () => {
+          document.body.classList.remove("shell-focus");
+          shellEl.style.height = "";
+          shellEl.style.transform = "";
+        });
+        if (vv) {                               // guard: absent on very old browsers
+          vv.addEventListener("resize", syncShell);
+          vv.addEventListener("scroll", syncShell);
+        }
+
         $("#importBtn").onclick = () => $("#importModal").classList.add("show");
         $("#importCancel").onclick = () => $("#importModal").classList.remove("show");
         $("#importDo").onclick = () => {
@@ -711,7 +888,12 @@
 
         // click backdrop closes modals
         document.querySelectorAll(".modal-bg").forEach((bg) =>
-          bg.addEventListener("click", (e) => e.target === bg && bg.classList.remove("show"))
+          bg.addEventListener("click", (e) => {
+            if (e.target !== bg) return;
+            bg.classList.remove("show");
+            // don't leave a climb prompt hanging if its backdrop is dismissed
+            if (bg.id === "passModal" && passResolve) { const r = passResolve; passResolve = null; r(null); }
+          })
         );
 
         appendLine('<span class="muted"># LesS/KEY ready. Runs entirely in your browser (WASM); nothing is sent to a server. Try: help</span>');

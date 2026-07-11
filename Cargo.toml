@@ -1,3 +1,10 @@
 [workspace]
 resolver = "2"
 members = ["hel", "helcli", "helwasm"]
+
+# argon2 at the id-2 cost (64 MiB, t=16) is unusably slow unoptimized
+# (~10 s/derive in debug vs ~0.5 s release); keep it fast in dev/test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

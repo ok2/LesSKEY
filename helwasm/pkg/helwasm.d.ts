@@ -2,6 +2,15 @@
 /* eslint-disable */
 
 /**
+ * Return the `^parent` chain of `name`, immediate parent first, one per line
+ * ("" if `name` is unknown or has no parent). These are exactly the entries
+ * `read_master` climbs through when deriving `name`: with no root master given,
+ * the UI prompts for each in turn (the name's base, then the base's base, …).
+ * Read-only; cycle-guarded.
+ */
+export function hel_chain(name: string): string;
+
+/**
  * Run a single hel command line and return its combined output.
  */
 export function hel_command(cmd: string): string;
@@ -28,6 +37,15 @@ export function hel_init(): void;
 export function hel_load_script(script: string): string;
 
 /**
+ * Return catalog entry names beginning with `prefix`, one per line, sorted —
+ * the `ls`-style completion set for a typed name. Read-only: reads `db` keys
+ * only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and can
+ * never add to the catalog. Case-insensitive by default; a leading `(?-i)`
+ * forces case-sensitive, mirroring `ls`. Empty prefix returns every name.
+ */
+export function hel_names(prefix: string): string;
+
+/**
  * Parse a password spec (e.g. `exa91` or `exa91 20R 99 2020-01-01`) and return
  * the canonical normalized form hel actually uses (name + mode + seq + date +
  * comment), without touching state. Returns the input unchanged if it does not
@@ -46,9 +64,11 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly hel_chain: (a: number, b: number) => [number, number];
     readonly hel_command: (a: number, b: number) => [number, number];
     readonly hel_entry: (a: number, b: number) => [number, number];
     readonly hel_load_script: (a: number, b: number) => [number, number];
+    readonly hel_names: (a: number, b: number) => [number, number];
     readonly hel_parse: (a: number, b: number) => [number, number];
     readonly hel_parse_name: (a: number, b: number) => [number, number];
     readonly hel_init: () => void;

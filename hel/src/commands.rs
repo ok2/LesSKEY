@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use crate::crypto::{self, TokenType};
 use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
-use crate::password::{Name, Password, PasswordRef};
+use crate::password::{is_plus_root, Name, Password, PasswordRef};
 use crate::repl::LKEval;
 use crate::structs::{config_flag, config_get, config_set, LKOut, Mode, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::totp;
@@ -96,8 +96,19 @@ descriptor — used by `add`, `gen`, and every line of the dump/`save` format:
             becomes the master for this entry (chained). The root master is the
             entry `/`, prompted once or set with `pass /`.
 
-  inline secrets — encrypted with THIS entry's own derived password (so they
-  unlock from the master + record, and inherit ^parent):
+  name markers (leading characters of the NAME, chosen by you):
+    +name    an independent root: its password is ENTERED (`pass +name` or a
+             prompt), never derived — the chain STOPS there, a blank prompt
+             does not climb past it. Extra master passwords, compartmented
+             subtrees; `/` is the unnamed default root with the same semantics.
+    $name    unfolded subtree (combine as `+$name`): this entry and everything
+             chained under it derives the full 160-bit UNFOLDED value (15 words
+             instead of 6) — set once on a base, descendants inherit. Worth it
+             under a root whose entered password is long (>64 bits).
+
+  inline secrets — encrypted with a key derived from THIS entry and its master
+  chain (so they unlock from the master + record, and inherit ^parent; edits to
+  mode/prefix/length are safe, renames and seq/parent changes re-key):
     #\"<base32 | otpauth://…>\"   a TOTP seed; use with mode T, `enc` shows the code
     !\"<text>\"                    an encrypted note; read it back with `reveal`
   On add/comment these are sealed in place to `#<blob>`/`!<blob>` — the plaintext
@@ -122,7 +133,9 @@ entry + master:
   B    base64                  0oqj5cs//Jo             (UB = upper)
   D    decimal words           1684 680 1995 1203 2046 619
   <len><mode>  truncate to <len> characters, e.g. 20R, 12UB, 6D.
-  A prefix (e.g. #Q3a) is prepended to every form.";
+  A prefix (e.g. #Q3a) is prepended to every form.
+  In a `$` (unfolded) subtree the same modes render the full 160-bit value:
+  15 words / 40 hex / 27 base64 digits instead of 6 / 16 / 11.";
 
 const HELP_LS: &str = "\
 ls [regex]   list catalog entries sorted by name.
@@ -155,8 +168,8 @@ prints the current TOTP code instead. See `help pb`, `help gen`, `help reveal`."
 const HELP_REVEAL: &str = "\
 reveal <name>   decrypt and print an entry's inline blobs to stdout: a `#` TOTP
                 token as its stored otpauth URI / secret, and any `!` token as
-                its text. The key is the entry's own derived password (same as
-                `enc`), so `pb reveal <name>` copies the plaintext.
+                its text. The key derives from the entry and its master chain
+                (same as `enc`), so `pb reveal <name>` copies the plaintext.
 
 Add secrets with `add`/`comment` using `#\"<base32|otpauth://…>\"` (TOTP, mode T)
 or `!\"<text>\"`; they are encrypted in place and never stored in the clear.";
@@ -318,6 +331,31 @@ impl<'a> LKEval<'a> {
                 None => (),
             }
         }
+        // A `+` entry is an independent root: its "master" IS its own entered
+        // password (like `/`), never a derivation — any ^parent is ignored.
+        let self_name = pwd.lock().borrow().name.to_string();
+        if is_plus_root(&self_name) {
+            if let Some(s) = self.state.lock().borrow().secrets.get(&self_name).cloned() {
+                return Some(s);
+            }
+            if !read {
+                return None;
+            }
+            return match (self.read_password)(self_name.to_string()) {
+                Ok(password) if !password.is_empty() => {
+                    self.cmd_correct(&out, &self_name, true, Some(password.clone()));
+                    self.state.lock().borrow_mut().secrets.insert(self_name, password.clone());
+                    Some(password)
+                }
+                _ => {
+                    out.e(format!(
+                        "error: {} is an independent root: enter its password or set it with `pass {}`",
+                        self_name, self_name
+                    ));
+                    None
+                }
+            };
+        }
         let parent = match &pwd.lock().borrow().parent {
             Some(p) => p.lock().borrow().name.to_string(),
             None => "/".to_string(),
@@ -356,6 +394,17 @@ impl<'a> LKEval<'a> {
                     self.cmd_correct(&out, &name, true, Some(password.as_ref().unwrap().clone()));
                     self.state.lock().borrow_mut().secrets.insert(name, password.as_ref().unwrap().clone());
                     password
+                } else if is_plus_root(&pn.lock().borrow().name) {
+                    // The chain STOPS at a `+` root: it is not derived from any
+                    // further base, so a blank entry cannot climb past it.
+                    if read {
+                        let name = pn.lock().borrow().name.to_string();
+                        out.e(format!(
+                            "error: {} is an independent root: enter its password or set it with `pass {}`",
+                            name, name
+                        ));
+                    }
+                    None
                 } else {
                     match self.read_master(&out, pn.clone(), read) {
                         Some(master) => {
@@ -477,7 +526,9 @@ impl<'a> LKEval<'a> {
             } else {
                 match self.read_master(&out, pwd.clone(), true) {
                     Some(sec) => {
-                        let p = pwd.lock().borrow().encode(sec.as_str());
+                        // A `+` root's password IS its entered value (like `enc /`
+                        // returns the root master), not a derived rendering.
+                        let p = if is_plus_root(&name) { sec } else { pwd.lock().borrow().encode(sec.as_str()) };
                         (name.clone(), p, Some(pwd))
                     }
                     None => {
@@ -490,8 +541,17 @@ impl<'a> LKEval<'a> {
         if out.active() {
             let is_totp = pwd_opt.as_ref().map_or(false, |p| p.lock().borrow().mode == Mode::Totp);
             if is_totp {
-                // Print the live code (from the decrypted seed) instead of `pass`.
-                self.cmd_enc_totp(out, pwd_opt.as_ref().unwrap(), &pass);
+                // Print the live code instead of `pass`. The seed is keyed by the
+                // UNFOLDED derivation, which needs the entry's master (the cached
+                // `pass` is the folded rendering — it can't reproduce the KEK).
+                let pwd = pwd_opt.as_ref().unwrap();
+                match self.read_master(out, pwd.clone(), true) {
+                    Some(sec) => {
+                        let kek = pwd.lock().borrow().kek_material(sec.as_str());
+                        self.cmd_enc_totp(out, pwd, &kek);
+                    }
+                    None => out.e(format!("error: master for {} not found", name)),
+                }
             } else {
                 out.o(pass.clone());
             }
@@ -506,7 +566,7 @@ impl<'a> LKEval<'a> {
     }
 
     /// A TOTP entry's `enc`: decrypt its first `#` token with `passphrase` (the
-    /// entry's own derived password) and print the current RFC-6238 code.
+    /// entry's unfolded KEK material) and print the current RFC-6238 code.
     fn cmd_enc_totp(&self, out: &LKOut, pwd: &PasswordRef, passphrase: &str) {
         let name = pwd.lock().borrow().name.clone();
         let seq = pwd.lock().borrow().seq;
@@ -558,16 +618,15 @@ impl<'a> LKEval<'a> {
             out.e(format!("error: {} has no encrypted tokens", ename));
             return;
         }
-        let cached = self.state.lock().borrow().secrets.get(&ename).cloned();
-        let passphrase = match cached {
-            Some(p) => p,
-            None => match self.read_master(out, pwd.clone(), true) {
-                Some(sec) => pwd.lock().borrow().encode(sec.as_str()),
-                None => {
-                    out.e(format!("error: master for {} not found", ename));
-                    return;
-                }
-            },
+        // KEK = unfolded derivation from the entry's MASTER; the folded password
+        // cached in `secrets` can't reproduce it, so always resolve the chain
+        // (read_master hits the parent cache — no re-prompt in the common case).
+        let passphrase = match self.read_master(out, pwd.clone(), true) {
+            Some(sec) => pwd.lock().borrow().kek_material(sec.as_str()),
+            None => {
+                out.e(format!("error: master for {} not found", ename));
+                return;
+            }
         };
         for (ttype, armor) in tokens {
             match crypto::open(ttype, &armor, &passphrase, &ename, seq) {
@@ -578,7 +637,7 @@ impl<'a> LKEval<'a> {
     }
 
     /// Encrypt any `#"..."`/`!"..."` markers in `pwd`'s comment in place, keyed by
-    /// the entry's own derived password (`encode()`). Returns Ok(true) if markers
+    /// the entry's unfolded KEK (`kek_material()`). Returns Ok(true) if markers
     /// were present. On failure the plaintext is REDACTED (never persisted) and
     /// Err is returned — so a missing master or a malformed marker can never leak
     /// a secret into the db, history, or dump.
@@ -603,7 +662,7 @@ impl<'a> LKEval<'a> {
                 return Err(());
             }
         };
-        let passphrase = pwd.lock().borrow().encode(&master);
+        let passphrase = pwd.lock().borrow().kek_material(&master);
         match seal_inline_markers(&comment, &passphrase, &name, seq) {
             Ok(sealed) => {
                 pwd.lock().borrow_mut().comment = Some(sealed);

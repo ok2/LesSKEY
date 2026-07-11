@@ -1,6 +1,30 @@
 /* @ts-self-types="./helwasm.d.ts" */
 
 /**
+ * Return the `^parent` chain of `name`, immediate parent first, one per line
+ * ("" if `name` is unknown or has no parent). These are exactly the entries
+ * `read_master` climbs through when deriving `name`: with no root master given,
+ * the UI prompts for each in turn (the name's base, then the base's base, …).
+ * Read-only; cycle-guarded.
+ * @param {string} name
+ * @returns {string}
+ */
+export function hel_chain(name) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.hel_chain(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Run a single hel command line and return its combined output.
  * @param {string} cmd
  * @returns {string}
@@ -65,6 +89,30 @@ export function hel_load_script(script) {
         const ptr0 = passStringToWasm0(script, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.hel_load_script(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Return catalog entry names beginning with `prefix`, one per line, sorted —
+ * the `ls`-style completion set for a typed name. Read-only: reads `db` keys
+ * only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and can
+ * never add to the catalog. Case-insensitive by default; a leading `(?-i)`
+ * forces case-sensitive, mirroring `ls`. Empty prefix returns every name.
+ * @param {string} prefix
+ * @returns {string}
+ */
+export function hel_names(prefix) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.hel_names(ptr0, len0);
         deferred2_0 = ret[0];
         deferred2_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
