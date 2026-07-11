@@ -1135,11 +1135,15 @@ impl<'a> LKEval<'a> {
         let mut counter = 1;
         // Captured (under `pb`/`enc`): emit just the variant names, like `ls`/`ld`,
         // so `pb gen …` copies names and `enc gen …` resolves one. Interactive:
-        // the full key/password/len/name table.
+        // the full key/password/len/name table. The password column grows with
+        // the widest listed password (a `$` subtree renders 15 words), floored
+        // at the classic 36 so narrow listings keep their familiar shape.
+        let start = encpwds.len() - min(genpwds.len(), num);
+        let width = std::cmp::max(36, encpwds[start..].iter().map(|(_, p)| p.chars().count()).max().unwrap_or(0));
         if !self.capture {
-            out.o(format!("{:>3} {:>36} {:>4}       {}", "", "Password", "Len", "Name"));
+            out.o(format!("{:>3} {:>width$} {:>4}       {}", "", "Password", "Len", "Name"));
         }
-        for num in (encpwds.len() - min(genpwds.len(), num))..encpwds.len() {
+        for num in start..encpwds.len() {
             let (pwd, pass) = (encpwds[num].0.clone(), encpwds[num].1.to_string());
             let key = Radix::new(counter, 36).unwrap().to_string();
             counter += 1;
@@ -1147,7 +1151,7 @@ impl<'a> LKEval<'a> {
             if self.capture {
                 out.o(pwd.lock().borrow().name.to_string());
             } else {
-                out.o(format!("{:>3} {:>36} {:>4} {}", key, pass, pass.len(), pwd.lock().borrow().to_string()));
+                out.o(format!("{:>3} {:>width$} {:>4} {}", key, pass, pass.chars().count(), pwd.lock().borrow().to_string()));
             }
         }
     }

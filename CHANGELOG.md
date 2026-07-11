@@ -36,6 +36,9 @@ release stamp.
   entries as you type (read-only prefix match, case-insensitive; `(?-i)` forces
   case-sensitive), so re-entering a saved name is a tap. Backed by a new
   read-only `hel_names` WASM export.
+- **Markdown import.** The Import box accepts a full markdown paste (e.g. a whole
+  Notion page whose `dump` is split across fenced code blocks): only the code-block
+  contents are imported, in order. Raw command text still works unchanged.
 - **Hierarchy password prompt in the form.** Generating a `^parent`-derived name
   with an empty master field now walks the parent chain like the CLI's
   `read_master`: it asks for the immediate base's password, blank climbs to the
@@ -51,6 +54,12 @@ release stamp.
   so the keyboard and shell stay open (`mousedown`/`touchend` preventDefault). A
   drag handle under the output resizes it, and the chosen height is remembered.
   Desktop behaviour is unchanged.
+
+### Fixed
+
+- `gen` table alignment with `$` (unfolded) names: the password column now grows
+  to the widest listed password (15-word values overflowed the fixed 36-char
+  column); narrow listings keep the classic layout.
 
 ## [1.1.0] - 2026-06-14 — Updates itself, works offline
 

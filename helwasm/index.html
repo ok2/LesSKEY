@@ -187,7 +187,7 @@
     <div class="modal-bg" id="importModal">
       <div class="modal">
         <h3>Import catalog</h3>
-        <p class="hint">Paste your catalog (e.g. the text of the Notion page). Existing entries with the same name are replaced.</p>
+        <p class="hint">Paste your catalog — raw <code>add …</code> lines, or a whole markdown page (a Notion <code>dump</code> split across code blocks works as-is; only the code blocks are read). Existing entries with the same name are replaced.</p>
         <textarea id="importText" placeholder="add ..."></textarea>
         <div class="row">
           <button class="btn" id="importDo">Import</button>
@@ -257,6 +257,7 @@
           { tag: "Improved", text: "The console works as a proper shell on phones: it fits the screen, and while you type the output stays visible above the on-screen keyboard instead of hiding behind it. Tapping a password to reveal it keeps the keyboard and the shell open. Drag the handle under the output to resize it, and the height is remembered." },
           { tag: "New", text: "The name field suggests matching entries from your saved catalog as you type, so re-entering a name is a tap." },
           { tag: "New", text: "A name that derives from a <code>^parent</code> now generates even without your root master: leave the master box empty and you're asked for the parent's password (blank climbs to its parent, and so on) — the same hierarchy walk as the command-line tool." },
+          { tag: "New", text: "Import accepts a whole markdown page, not just raw commands: paste a full Notion page whose <code>dump</code> is split across code blocks and only the code blocks are read." },
         ] },
         { version: "1.1.0", date: "2026-06-14", title: "Updates itself, works offline", changes: [
           { tag: "New", text: "The installed app now updates itself the next time you open it — no more removing and re-adding, and your saved catalog is kept across updates." },
@@ -312,6 +313,18 @@
       const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const stripNoise = (out) => out.split("\n").filter((l) => l && !/^(warning|error):/.test(l));
       const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      // Import accepts a full markdown paste (e.g. a whole Notion page whose hel `dump`
+      // is split across several fenced code blocks): pull out the code-block contents and
+      // import only those, in order. With no code fence, treat the text as raw commands
+      // (unchanged behaviour). Language tag after the opening ``` is ignored.
+      function extractScript(txt) {
+        const blocks = [];
+        const re = /```[^\n]*\r?\n([\s\S]*?)```/g;
+        let m;
+        while ((m = re.exec(txt)) !== null) blocks.push(m[1]);
+        return blocks.length ? blocks.join("\n") : txt;
+      }
 
       // ls-style name autocomplete for #qname. hel_names reads db.keys() only, so it
       // never mutates the catalog or ls state (quick-gen stays stateless). Only offers
@@ -858,7 +871,7 @@
         $("#importBtn").onclick = () => $("#importModal").classList.add("show");
         $("#importCancel").onclick = () => $("#importModal").classList.remove("show");
         $("#importDo").onclick = () => {
-          const txt = $("#importText").value;
+          const txt = extractScript($("#importText").value); // markdown → code blocks, else raw
           if (txt.trim()) {
             hel_load_script(txt);
             persist();
