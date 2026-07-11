@@ -211,14 +211,18 @@ pub fn call_cmd_with_input(cmd: &str, args: &Vec<String>, input: &str) -> io::Re
         .stdout(Stdio::piped())
         .spawn()?;
 
-    {
-        let stdin = cmd.stdin.as_mut().unwrap();
-        stdin
-            .write_all(input.as_bytes())
-            .expect("Failed to write input to stdin");
-    }
+    // The child may exit before draining stdin (e.g. `hel store` with a bad
+    // target): EPIPE here is the child's failure, reported via its exit status
+    // below — so hold the write error instead of panicking on it.
+    let write_res = cmd.stdin.as_mut().unwrap().write_all(input.as_bytes());
 
     let output = cmd.wait_with_output()?;
+    if !output.status.success() {
+        // The child's stderr is inherited (already on the terminal); the caller
+        // must NOT report success or advance its saved-state on this.
+        return Err(io::Error::new(io::ErrorKind::Other, format!("command failed ({})", output.status)));
+    }
+    write_res?; // exited 0 without taking all input -> still a failed hand-off
 
     match String::from_utf8(output.stdout) {
         Ok(x) => Ok(x),
@@ -316,6 +320,13 @@ line 4"###
             "line 1\nline 2\nline 3\nline 4".to_string()
         );
         assert_ne!(call_cmd_with_input("cat", &vec![], "notok").unwrap(), "ok".to_string());
+        // A failing child is an Err — `save |cmd` must never report success on
+        // it (the Notion 504 regression: `hel store` exits 1, save said saved).
+        assert!(call_cmd_with_input("false", &vec![], "").is_err());
+        // A child that exits before draining a large stdin must not panic the
+        // caller (EPIPE) — it surfaces as the child's failure or a write error.
+        let big = "x".repeat(1 << 20);
+        assert!(call_cmd_with_input("false", &vec![], &big).is_err());
         assert_eq!(
             call_cmd_with_input("echo", &vec!["-n".to_string(), "test is ok".to_string()], "").unwrap(),
             "test is ok".to_string()

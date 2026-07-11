@@ -1,12 +1,16 @@
 //! Minimal Notion REST client for the `hel store` / `hel load` subcommands.
 //!
-//! The hel dump is a runnable `add …` script; this module parks the whole
-//! script in a single **code block** on one Notion page and reads it back. The
-//! page is addressed by `notion:<ref>` where `<ref>` is either a page id (UUID,
+//! The hel dump is a runnable `add …` script; this module parks the script in
+//! **code blocks** on one Notion page and reads it back (their texts
+//! concatenated in page order — a legacy single-block page reads the same).
+//! Writes go in segments of at most `MAX_BLOCK_CHARS`: Notion's gateway 504s
+//! on big single-block updates (processing scales with block size, the CDN
+//! cuts at ~100 s), while several small PATCHes go through reliably. The page
+//! is addressed by `notion:<ref>` where `<ref>` is either a page id (UUID,
 //! dashed or bare) or a page title resolved via Notion search.
 //!
 //! Auth: an internal-integration token from `HEL_NOTION_TOKEN`. The page must be
-//! shared with that integration.
+//! shared with that integration. All code blocks on the page belong to hel.
 
 use serde_json::{json, Value};
 
@@ -14,6 +18,9 @@ const API: &str = "https://api.notion.com/v1";
 const NOTION_VERSION: &str = "2022-06-28";
 /// Notion caps a single rich_text `content` at 2000 characters.
 const MAX_RICH_TEXT: usize = 2000;
+/// Per-code-block content budget for writes (10 rich_text chunks). A full
+/// catalog (~115 KB) becomes ~6 fast PATCHes instead of one 504-prone giant.
+const MAX_BLOCK_CHARS: usize = 20_000;
 
 /// Split `notion:<ref>` into its reference part, rejecting other schemes.
 pub fn parse_target(target: &str) -> Result<&str, String> {
@@ -46,6 +53,40 @@ pub fn chunk_rich_text(text: &str) -> Vec<Value> {
         let chunk: String = chars[i..end].iter().collect();
         out.push(json!({ "type": "text", "text": { "content": chunk } }));
         i = end;
+    }
+    out
+}
+
+/// Split `text` into write segments of at most `max` characters, cutting after
+/// a newline whenever one fits the budget (hard char-split only for a single
+/// oversize line). Concatenating the segments reproduces `text` exactly.
+pub fn split_segments(text: &str, max: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seg = String::new();
+    let mut seg_chars = 0usize;
+    for piece in text.split_inclusive('\n') {
+        let mut rest = piece;
+        let mut rest_chars = rest.chars().count();
+        // an oversize single line: flush, then emit max-sized slices directly
+        while rest_chars > max {
+            if seg_chars > 0 {
+                out.push(std::mem::take(&mut seg));
+                seg_chars = 0;
+            }
+            let cut = rest.char_indices().nth(max).map(|(i, _)| i).unwrap_or(rest.len());
+            out.push(rest[..cut].to_string());
+            rest = &rest[cut..];
+            rest_chars -= max;
+        }
+        if seg_chars + rest_chars > max {
+            out.push(std::mem::take(&mut seg));
+            seg_chars = 0;
+        }
+        seg.push_str(rest);
+        seg_chars += rest_chars;
+    }
+    if !seg.is_empty() || out.is_empty() {
+        out.push(seg);
     }
     out
 }
@@ -88,6 +129,30 @@ fn fmt_err(e: ureq::Error) -> String {
     }
 }
 
+/// Send a request with up to two retries on a 5xx/429 status or a transport
+/// error. Notion's gateway 504s on large writes and rate-limits bursts (429);
+/// every request we make is idempotent, so retrying is safe. Other 4xx (auth,
+/// not-found, validation) fails immediately.
+fn send_retry(what: &str, f: impl Fn() -> Result<ureq::Response, ureq::Error>) -> Result<ureq::Response, String> {
+    let mut delay = 2u64;
+    let mut attempt = 0;
+    loop {
+        match f() {
+            Ok(r) => return Ok(r),
+            Err(ureq::Error::Status(code, _)) if (code >= 500 || code == 429) && attempt < 2 => {
+                eprintln!("hel: Notion HTTP {} on {} — retrying in {}s", code, what, delay);
+            }
+            Err(ureq::Error::Transport(t)) if attempt < 2 => {
+                eprintln!("hel: Notion request failed on {} ({}) — retrying in {}s", what, t, delay);
+            }
+            Err(e) => return Err(fmt_err(e)),
+        }
+        std::thread::sleep(std::time::Duration::from_secs(delay));
+        delay *= 3;
+        attempt += 1;
+    }
+}
+
 pub struct Notion {
     token: String,
 }
@@ -112,15 +177,14 @@ impl Notion {
         if is_uuid(reference) {
             return Ok(reference.to_string());
         }
-        let resp: Value = self
-            .req("POST", &format!("{}/search", API))
-            .send_json(json!({
+        let resp: Value = send_retry("search", || {
+            self.req("POST", &format!("{}/search", API)).send_json(json!({
                 "query": reference,
                 "filter": { "value": "page", "property": "object" }
             }))
-            .map_err(fmt_err)?
-            .into_json()
-            .map_err(|e| e.to_string())?;
+        })?
+        .into_json()
+        .map_err(|e| e.to_string())?;
 
         let empty = Vec::new();
         let results = resp["results"].as_array().unwrap_or(&empty);
@@ -155,10 +219,7 @@ impl Notion {
                 url.push_str("&start_cursor=");
                 url.push_str(c);
             }
-            let resp: Value = self
-                .req("GET", &url)
-                .call()
-                .map_err(fmt_err)?
+            let resp: Value = send_retry("list blocks", || self.req("GET", &url).call())?
                 .into_json()
                 .map_err(|e| e.to_string())?;
             if let Some(results) = resp["results"].as_array() {
@@ -176,40 +237,52 @@ impl Notion {
         Ok(blocks)
     }
 
-    /// Read the dump script back: the text of the page's first code block.
+    /// Read the dump script back: the page's code blocks concatenated in page
+    /// order. A legacy single-block page reads identically.
     pub fn read_dump(&self, page_id: &str) -> Result<String, String> {
         let children = self.children(page_id)?;
         Ok(children
             .iter()
-            .find(|b| b["type"].as_str() == Some("code"))
+            .filter(|b| b["type"].as_str() == Some("code"))
             .map(code_text)
-            .unwrap_or_default())
+            .collect())
     }
 
-    /// Write the dump script: replace the page's first code block, or append a
-    /// fresh one if the page has none.
+    /// Write the dump script across the page's code blocks, one segment of at
+    /// most `MAX_BLOCK_CHARS` each (see the module docs: one giant block 504s).
+    /// Existing code blocks are PATCHed in order; extra segments are appended;
+    /// leftover blocks are deleted. Interleaved non-code content is untouched.
     pub fn write_dump(&self, page_id: &str, text: &str) -> Result<(), String> {
         let children = self.children(page_id)?;
-        let rich_text = chunk_rich_text(text);
-
-        let existing = children
+        let segments = split_segments(text, MAX_BLOCK_CHARS);
+        let existing: Vec<&str> = children
             .iter()
-            .find(|b| b["type"].as_str() == Some("code"))
-            .and_then(|b| b["id"].as_str());
+            .filter(|b| b["type"].as_str() == Some("code"))
+            .filter_map(|b| b["id"].as_str())
+            .collect();
 
-        if let Some(block_id) = existing {
-            self.req("PATCH", &format!("{}/blocks/{}", API, block_id))
-                .send_json(json!({ "code": { "rich_text": rich_text } }))
-                .map_err(fmt_err)?;
-        } else {
-            self.req("PATCH", &format!("{}/blocks/{}/children", API, page_id))
-                .send_json(json!({
-                    "children": [{
-                        "type": "code",
-                        "code": { "rich_text": rich_text, "language": "plain text" }
-                    }]
-                }))
-                .map_err(fmt_err)?;
+        for (i, seg) in segments.iter().enumerate() {
+            let rich_text = chunk_rich_text(seg);
+            if let Some(block_id) = existing.get(i) {
+                send_retry("write dump", || {
+                    self.req("PATCH", &format!("{}/blocks/{}", API, block_id))
+                        .send_json(json!({ "code": { "rich_text": rich_text } }))
+                })?;
+            } else {
+                send_retry("write dump", || {
+                    self.req("PATCH", &format!("{}/blocks/{}/children", API, page_id)).send_json(json!({
+                        "children": [{
+                            "type": "code",
+                            "code": { "rich_text": rich_text, "language": "plain text" }
+                        }]
+                    }))
+                })?;
+            }
+        }
+        for block_id in existing.iter().skip(segments.len()) {
+            send_retry("trim dump blocks", || {
+                self.req("DELETE", &format!("{}/blocks/{}", API, block_id)).call()
+            })?;
         }
         Ok(())
     }
@@ -273,5 +346,37 @@ mod tests {
         let v = chunk_rich_text("");
         assert_eq!(v.len(), 1);
         assert_eq!(v[0]["text"]["content"], "");
+    }
+
+    #[test]
+    fn split_segments_reassembles_exactly() {
+        // line-shaped content like a dump: segments cut after newlines, and
+        // concatenation reproduces the input byte-for-byte.
+        let text: String = (0..500).map(|i| format!("add entry{} R 99 2026-01-01 #blobblobblob\n", i)).collect();
+        let segs = split_segments(&text, 1000);
+        assert!(segs.len() > 1);
+        for s in &segs {
+            assert!(s.chars().count() <= 1000);
+            assert!(s.ends_with('\n')); // cut on line boundaries
+        }
+        assert_eq!(segs.concat(), text);
+    }
+
+    #[test]
+    fn split_segments_small_and_empty() {
+        assert_eq!(split_segments("one line\n", 1000), vec!["one line\n"]);
+        assert_eq!(split_segments("", 1000), vec![""]);
+    }
+
+    #[test]
+    fn split_segments_oversize_line() {
+        // a single line longer than the budget hard-splits but still reassembles
+        let long = "x".repeat(2500);
+        let text = format!("short\n{}\ntail\n", long);
+        let segs = split_segments(&text, 1000);
+        for s in &segs {
+            assert!(s.chars().count() <= 1000);
+        }
+        assert_eq!(segs.concat(), text);
     }
 }

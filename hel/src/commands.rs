@@ -482,13 +482,16 @@ impl<'a> LKEval<'a> {
                 self.state.lock().borrow_mut().secrets.insert(p.lock().borrow().name.to_string(), pwd);
             }
             None => {
-                if name == "/" {
+                // Roots take a secret without a catalog entry: `/` always did;
+                // a `+` root's password is likewise entered, not derived, so
+                // `pass +vault …` may precede loading the catalog it anchors.
+                if name == "/" || is_plus_root(name) {
                     let pwd = match pass {
                         Some(pp) => pp.to_string(),
-                        None => (self.read_password)("/".to_string()).unwrap(),
+                        None => (self.read_password)(name.to_string()).unwrap(),
                     };
-                    self.cmd_correct(&out, &"/".to_string(), true, Some(pwd.clone()));
-                    self.state.lock().borrow_mut().secrets.insert("/".to_string(), pwd);
+                    self.cmd_correct(&out, name, true, Some(pwd.clone()));
+                    self.state.lock().borrow_mut().secrets.insert(name.to_string(), pwd);
                 } else {
                     out.e(format!("error: password with name {} not found", name));
                 }

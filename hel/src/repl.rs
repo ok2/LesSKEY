@@ -564,6 +564,13 @@ mod tests {
         let pr = LKEval::newd(command_parser::cmd("enc +solo").unwrap(), lk.clone(), rp2).eval();
         assert_eq!(pr.out.out.as_ref().unwrap().lock()[0], "solo pw");
         assert_eq!(lk.lock().borrow().secrets[&"+solo".to_string()], "solo pw");
+
+        // `pass +root` works BEFORE the catalog holds the entry (like `pass /`),
+        // so an import script can set all roots up front.
+        let lk2 = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let pr = LKEval::newd(command_parser::cmd("pass +early xyz").unwrap(), lk2.clone(), rp).eval();
+        assert!(pr.out.err.as_ref().unwrap().lock().iter().all(|l| !l.contains("not found")));
+        assert_eq!(lk2.lock().borrow().secrets[&"+early".to_string()], "xyz");
     }
 
     #[test]
