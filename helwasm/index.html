@@ -255,6 +255,7 @@
           { tag: "New", text: "Multiple master passwords: a name starting with <code>+</code> (like <code>+vault</code>) is an independent root — its password is entered, never derived, and the <code>^parent</code> chain stops there. Compartmentalize subtrees under separate masters." },
           { tag: "New", text: "<code>reset yes</code> in the console drops the whole in-memory catalog for a clean reimport — nothing saved changes until the next <code>save</code>, and cached masters are kept so the reimport seals without re-prompting." },
           { tag: "New", text: "A base whose name starts with <code>$</code> (or <code>+$</code>) switches its whole subtree to the unfolded derivation: 15-word passwords carrying the full 160 bits, inherited by every entry below it." },
+          { tag: "New", text: "<code>rnd</code> mints passwords from pure randomness — each candidate is a fresh 160-bit value rendered like a <code>$</code> entry (15 words), touching no master. Made for creating new <code>+</code>/<code>+$</code> root passwords; <code>pb rnd1</code> copies one." },
           { tag: "Improved", text: "The console works as a proper shell on phones: it fits the screen, and while you type the output stays visible above the on-screen keyboard instead of hiding behind it. Tapping a password to reveal it keeps the keyboard and the shell open. Drag the handle under the output to resize it, and the height is remembered." },
           { tag: "New", text: "The name field suggests matching entries from your saved catalog as you type, so re-entering a name is a tap." },
           { tag: "New", text: "A name that derives from a <code>^parent</code> now generates even without your root master: leave the master box empty and you're asked for the parent's password (blank climbs to its parent, and so on) — the same hierarchy walk as the command-line tool." },
@@ -518,7 +519,7 @@
         const plusAt = chain.findIndex((n) => n.startsWith("+"));
         const levels = plusAt >= 0 ? chain.slice(0, plusAt + 1) : [...chain, "/"];
         for (const lvl of levels) {
-          const title = lvl === "/" ? "Master password (root)" : 'Password for "' + lvl + '"';
+          const title = passTitle(lvl);
           const pw = await promptPassword(title);
           if (pw === null) return;            // Cancel → abort the climb
           if (pw === "") {
@@ -639,9 +640,13 @@
       //      password in a modal, then run the long form `pass <name> <pw>`) ----
       let passPending = null;
       let passResolve = null; // set → #passModal is in promise mode (quick-gen climb)
+      // Friendly title for the pass modal: the root (`/`) shows as "Master password (root)".
+      function passTitle(name) {
+        return name === "/" ? "Master password (root)" : 'Password for "' + name + '"';
+      }
       function openPassOverlay(name) {
         passPending = name;
-        $("#passTitle").textContent = 'Password for "' + name + '"';
+        $("#passTitle").textContent = passTitle(name);
         $("#passInput").value = "";
         $("#passModal").classList.add("show");
         setTimeout(() => $("#passInput").focus(), 30);
@@ -818,8 +823,8 @@
             }
             hi = history.length;
             draft = "";
-            const pm = v.match(/^pass\s+(\S+)\s*$/); // `pass <name>` → ask in an overlay
-            if (pm) { openPassOverlay(pm[1]); return; }
+            const pm = v.match(/^pass(?:\s+(\S+))?\s*$/); // `pass [name]` → overlay; `/` (root) is the default
+            if (pm) { openPassOverlay(pm[1] || "/"); return; }
             consoleRun(v);
           } else if (e.key === "ArrowUp") {
             if (hi > 0) {

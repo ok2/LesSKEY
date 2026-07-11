@@ -106,6 +106,7 @@ pub enum Command<'a> {
     Enc(Name),
     Reveal(Name),
     Gen(u32, PasswordRef),
+    Rnd(u32, PasswordRef),
     Pass(Name, Option<String>),
     UnPass(Option<Name>),
     Correct(Name),
@@ -134,6 +135,7 @@ impl<'a> PartialEq for Command<'a> {
             (Command::Enc(s), Command::Enc(o)) => s == o,
             (Command::Reveal(s), Command::Reveal(o)) => s == o,
             (Command::Gen(a, b), Command::Gen(x, y)) => a == x && *b.lock() == *y.lock(),
+            (Command::Rnd(a, b), Command::Rnd(x, y)) => a == x && *b.lock() == *y.lock(),
             (Command::Pass(a, b), Command::Pass(x, y)) => a == x && b == y,
             (Command::UnPass(s), Command::UnPass(o)) => s == o,
             (Command::Correct(s), Command::Correct(o)) => s == o,
@@ -165,6 +167,7 @@ impl<'a> std::fmt::Display for Command<'a> {
             Command::Enc(s) => write!(f, "enc {}", s),
             Command::Reveal(s) => write!(f, "reveal {}", s),
             Command::Gen(a, b) => write!(f, "gen{} {}", a, b.lock().borrow().to_string().trim()),
+            Command::Rnd(a, b) => write!(f, "rnd{} {}", a, b.lock().borrow().to_string().trim()),
             Command::Pass(a, None) => write!(f, "pass {}", a),
             // Value redacted: the long form carries the secret itself and this
             // Display feeds the history entry (same rationale as `set` below).

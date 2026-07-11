@@ -10,7 +10,7 @@ peg::parser! {
         pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / save_cmd() / save_def_cmd() / dump_cmd()) { c }
         pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / keep_cmd() / mv_cmd() / rm_cmd() / reset_cmd() / comment_cmd ()) { c }
         pub rule asides_cmd_list() -> Command<'input> = space()* c:(help_cmd() / source_cmd() / set_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
-        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / reveal_cmd() / gen_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
+        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / reveal_cmd() / gen_cmd() / rnd_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
         pub rule script() -> Vec<Command<'input>> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) ++ "\n" { c }
 
         rule space() -> &'input str = s:$(
@@ -107,9 +107,19 @@ peg::parser! {
         rule gen_cmd() -> Command<'input> = "gen" n:num()? _ name:name() {
             Command::Gen(match n { Some(n) => n, None => 10_u32 }, Password::from_password(name))
         }
+        // `rnd[N] [descriptor]` — like gen, but each candidate's master is pure
+        // OS randomness. The descriptor rules apply as usual ($ name = wide,
+        // G/X suffix expands); a bare `rnd` defaults to `$rnd` (15 words).
+        rule rnd_cmd() -> Command<'input> = "rnd" n:num()? name:(_ nm:name() { nm })? {
+            let p = match name {
+                Some(p) => p,
+                None => Password::new(None, "$rnd".to_string(), None, Mode::Regular, 99, Date::now(), None),
+            };
+            Command::Rnd(match n { Some(n) => n, None => 10_u32 }, Password::from_password(p))
+        }
         rule error_cmd() -> Command<'input> = "error" _ e:$(([' '..='~'])+) { Command::Error(LKErr::Error(e)) }
         rule mv_cmd() -> Command<'input> = "mv" _ name:word() _ folder:word() { Command::Mv(name, folder) }
-        rule pass_short_cmd() -> Command<'input> = "pass" _ name:word() { Command::Pass(name, None) }
+        rule pass_short_cmd() -> Command<'input> = "pass" name:(_ w:word() { w })? { Command::Pass(name.unwrap_or_else(|| "/".to_string()), None) }
         rule pass_long_cmd() -> Command<'input> = "pass" _ name:word() _ pass:$(([' '..='~'])+) { Command::Pass(name, Some(pass.to_string())) }
         rule pass_cmd() -> Command<'input> = p:(pass_long_cmd() / pass_short_cmd()) { p }
         rule correct_cmd() -> Command<'input> = "correct" _ name:word() { Command::Correct(name) }
@@ -347,12 +357,46 @@ add t3 C 99 2022-12-14
     }
 
     #[test]
+    fn parse_rnd_test() {
+        // bare rnd -> 10 candidates of the wide default descriptor `$rnd`
+        match command_parser::cmd("rnd") {
+            Ok(Command::Rnd(n, p)) => {
+                assert_eq!(n, 10);
+                assert_eq!(p.lock().borrow().name, "$rnd");
+                assert_eq!(p.lock().borrow().mode, Mode::Regular);
+            }
+            other => panic!("unexpected: {:?}", other),
+        }
+        // count + full descriptor
+        match command_parser::cmd("rnd5 x 20UB") {
+            Ok(Command::Rnd(n, p)) => {
+                assert_eq!(n, 5);
+                assert_eq!(p.lock().borrow().name, "x");
+                assert_eq!(p.lock().borrow().mode, Mode::Base64Upcase);
+                assert_eq!(p.lock().borrow().length, Some(20));
+            }
+            other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
     fn parse_reset_test() {
         assert_eq!(command_parser::cmd("reset"), Ok(Command::Reset(None)));
         assert_eq!(command_parser::cmd("reset yes"), Ok(Command::Reset(Some("yes".to_string()))));
         assert_eq!(Command::Reset(Some("yes".to_string())).to_string(), "reset yes");
         // an entry named reset* is still addressable through other commands
         assert_eq!(command_parser::cmd("enc reset"), Ok(Command::Enc("reset".to_string())));
+    }
+
+    #[test]
+    fn parse_pass_test() {
+        // bare `pass` defaults to the root `/`; `pass /` is the same
+        assert_eq!(command_parser::cmd("pass"), Ok(Command::Pass("/".to_string(), None)));
+        assert_eq!(command_parser::cmd("pass /"), Ok(Command::Pass("/".to_string(), None)));
+        // a named short form and the long (inline pw) form still parse
+        assert_eq!(command_parser::cmd("pass foo"), Ok(Command::Pass("foo".to_string(), None)));
+        assert_eq!(command_parser::cmd("pass +vault"), Ok(Command::Pass("+vault".to_string(), None)));
+        assert_eq!(command_parser::cmd("pass foo secret pw"), Ok(Command::Pass("foo".to_string(), Some("secret pw".to_string()))));
     }
 
     #[test]

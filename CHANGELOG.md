@@ -39,6 +39,11 @@ release stamp.
 - **Markdown import.** The Import box accepts a full markdown paste (e.g. a whole
   Notion page whose `dump` is split across fenced code blocks): only the code-block
   contents are imported, in order. Raw command text still works unchanged.
+- **`rnd` command — mint root passwords.** `rnd[N] [descriptor]` prints N
+  candidates from pure OS randomness: 160 fresh bits each, rendered full-width
+  in the descriptor's mode/prefix/length (15 words for R, like a `$` entry). No
+  master and no derivation involved — for creating new `+`/`+$` root passwords
+  whose entropy must not descend from an existing master. `pb rnd1` copies one.
 - **`reset` command.** `reset yes` drops the whole in-memory catalog for a clean
   reimport (`source` right after — cached masters are kept, so inline secrets
   seal without re-prompting). Nothing saved changes until the next `save`; a

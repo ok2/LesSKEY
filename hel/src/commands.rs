@@ -52,8 +52,9 @@ PASSWORDS
   enc <command>          encode the last name a command prints (ls/ld/gen)
   reveal <name>          decrypt an entry's inline #TOTP / !text blobs
   gen[N] <name>          N variants; name ends G.. (all) or X.. (random) [N=10]
+  rnd[N] [descriptor]    gen with a pure-random master per row      (help rnd)
   pb <command>           run a command, copy its output to the clipboard
-  pass <name> [pw]       cache a master/override for an entry's subtree
+  pass [name] [pw]       cache a master/override for a subtree (pass = root /)
   unpass [name]          forget cached master (unpass / = root, unpass = all)
   correct <name>         trust this password's hash
   uncorrect <name>       untrust it
@@ -186,6 +187,27 @@ numbered variant is produced. Otherwise the single entry is shown. N defaults to
 Under `pb`/`enc` it lists just the variant names: `pb gen tX` copies a random
 variant's name, `pb enc gen tX` copies that variant's password.";
 
+const HELP_RND: &str = "\
+rnd[N] [descriptor]   like `gen`, but each candidate's MASTER is pure OS
+                      randomness (160 fresh bits per row) instead of the
+                      catalog master. Everything else follows the descriptor as
+                      usual: mode/prefix/length, folded 6 words vs wide 15 by
+                      the `$` name marker, `G`/`X` suffix expansion (testGG ->
+                      test1..test99). A suffix-less name gives N independent
+                      candidates; bare `rnd` defaults to `$rnd` (15 words).
+
+Use it to mint a new ROOT password (`+base` / `+$base`): roots must not derive
+from an existing master. A `$` candidate carries the full 160 bits (picking
+your favourite of N costs only ~log2(N) bits); a folded one carries 64.
+The shown passwords are one-off samples, never stored: `keep <id>` files only
+the DESCRIPTOR, and `enc` on it derives under the real master as always.
+`pb rnd1 …` copies one candidate.
+
+  rnd             ten 15-word passphrases ($rnd, wide)
+  rnd5 $vault     five wide candidates for a root password
+  rnd3 site C     three folded CamelCase samples
+  rnd1 x 20UB     one 20-char upper-base64 value (truncation trims entropy)";
+
 const HELP_PB: &str = "\
 pb <command>   run <command> and copy its stdout to the clipboard.
 
@@ -201,9 +223,9 @@ and over SSH/tmux with no configuration. With none found, the data is left on
 stdout.";
 
 const HELP_PASS: &str = "\
-pass <name> [pw]   cache a master for <name> and its subtree for this session.
-                   `pass <name>` prompts; `pass <name> pw` sets it inline. Use
-                   `pass /` for the ROOT master used by top-level entries.
+pass [name] [pw]   cache a master for <name> and its subtree for this session.
+                   `pass <name>` prompts; `pass <name> pw` sets it inline. A bare
+                   `pass` (or `pass /`) is the ROOT master used by top-level entries.
                    Nothing is written to disk.
 unpass [name]      forget a cached master: `unpass <name>` one, `unpass /` the
                    root, `unpass` (no argument) all of them.";
@@ -295,6 +317,7 @@ impl<'a> LKEval<'a> {
             Some("enc") => HELP_ENC,
             Some("reveal") => HELP_REVEAL,
             Some("gen") => HELP_GEN,
+            Some("rnd" | "random") => HELP_RND,
             Some("pb") => HELP_PB,
             Some("pass" | "unpass") => HELP_PASS,
             Some("correct" | "uncorrect") => HELP_CORRECT,
@@ -1098,36 +1121,68 @@ impl<'a> LKEval<'a> {
         };
     }
 
-    pub fn cmd_gen(&self, out: &LKOut, num: &u32, name: &PasswordRef) {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"^.+?(G+|X+)$").unwrap();
-        }
+    /// `rnd[N] [descriptor]`: like `gen`, but every candidate's MASTER is pure
+    /// OS randomness (160 fresh bits per row) instead of the catalog master —
+    /// for minting new root passwords (`+`/`+$` bases). The descriptor decides
+    /// everything else exactly as usual: mode/prefix/length, folded (6 words)
+    /// vs wide (15 words) by the `$` name marker, `G`/`X` suffix expansion; a
+    /// suffix-less name yields N independent candidates. Rows list like `gen`
+    /// (ids reusable with `keep` to file the DESCRIPTOR; the shown password is
+    /// a one-off sample, never stored — `enc <id>` derives under the real
+    /// master). Under `pb` it emits bare passwords: `pb rnd1 …` copies one.
+    pub fn cmd_rnd(&self, out: &LKOut, num: &u32, name: &PasswordRef) {
         let num: usize = (*num).try_into().unwrap();
-        let pwd = name.lock();
-        let mut genpwds: Vec<PasswordRef> = Vec::new();
-        match RE.captures(pwd.borrow().name.as_ref()) {
-            Some(caps) => {
-                let gen = &caps[1];
-                if gen.starts_with("G") {
-                    let name = pwd.borrow().name.trim_end_matches('G').to_string();
-                    for num in 1..10_u32.pow(gen.len().try_into().unwrap()) {
-                        let npwd = Password::from_password_ref(&pwd.borrow());
-                        npwd.lock().borrow_mut().name = format!("{}{}", name, num).to_string();
-                        genpwds.push(npwd);
-                    }
-                } else {
-                    let name = pwd.borrow().name.trim_end_matches('X').to_string();
-                    let num = rnd::range(1, 10_u32.pow(gen.len().try_into().unwrap()));
-                    let npwd = Password::from_password_ref(&pwd.borrow());
-                    npwd.lock().borrow_mut().name = format!("{}{}", name, num).to_string();
-                    genpwds.push(npwd);
-                }
-            }
-            None => {
-                let npwd = Password::from_password_ref(&pwd.borrow());
-                genpwds.push(npwd);
+        let mut genpwds = expand_variants(name);
+        if genpwds.len() == 1 && num > 1 {
+            // no G/X expansion: offer N independent candidates of the descriptor
+            let one = genpwds[0].clone();
+            for _ in 1..num {
+                genpwds.push(Password::from_password_ref(&one.lock().borrow()));
             }
         }
+        // register + wire ^parent first, so a `$` inherited from an ancestor
+        // (or on the name itself) picks the wide rendering, exactly like gen
+        self.state.lock().borrow_mut().ls.clear();
+        for (i, pwd) in genpwds.iter().enumerate() {
+            let key = Radix::new(i as i32 + 1, 36).unwrap().to_string();
+            self.state.lock().borrow_mut().ls.insert(key, pwd.clone());
+        }
+        self.state.lock().borrow().fix_hierarchy();
+        let mut encpwds: Vec<(PasswordRef, String)> = Vec::new();
+        for pwd in &genpwds {
+            let mut h = [0u8; 20];
+            if getrandom::getrandom(&mut h).is_err() {
+                out.e("error: random source unavailable".to_string());
+                return;
+            }
+            let master: String = h.iter().map(|b| format!("{:02x}", b)).collect();
+            let pass = pwd.lock().borrow().encode(&master);
+            encpwds.push((pwd.clone(), pass));
+        }
+        encpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        self.state.lock().borrow_mut().ls.clear();
+        let mut counter = 1;
+        let start = encpwds.len() - min(encpwds.len(), num);
+        let width = std::cmp::max(36, encpwds[start..].iter().map(|(_, p)| p.chars().count()).max().unwrap_or(0));
+        if !self.capture {
+            out.o(format!("{:>3} {:>width$} {:>4}       {}", "", "Password", "Len", "Name"));
+        }
+        for i in start..encpwds.len() {
+            let (pwd, pass) = (encpwds[i].0.clone(), encpwds[i].1.to_string());
+            let key = Radix::new(counter, 36).unwrap().to_string();
+            counter += 1;
+            self.state.lock().borrow_mut().ls.insert(key.clone(), pwd.clone());
+            if self.capture {
+                out.o(pass);
+            } else {
+                out.o(format!("{:>3} {:>width$} {:>4} {}", key, pass, pass.chars().count(), pwd.lock().borrow().to_string()));
+            }
+        }
+    }
+
+    pub fn cmd_gen(&self, out: &LKOut, num: &u32, name: &PasswordRef) {
+        let num: usize = (*num).try_into().unwrap();
+        let genpwds = expand_variants(name);
         self.state.lock().borrow_mut().ls.clear();
         let mut counter = 1;
         let mut lspwds: Vec<(PasswordRef, String)> = Vec::new();
@@ -1190,6 +1245,41 @@ impl<'a> LKEval<'a> {
 /// Current unix time in seconds (native + wasm via chrono/wasmbind).
 fn now_unix() -> i64 {
     chrono::Utc::now().timestamp()
+}
+
+/// Expand a descriptor's `G`/`X` name suffix into variant records (shared by
+/// `gen` and `rnd`): `testG` -> test1..test9, `testGG` -> test1..test99, `testX`
+/// -> one random numbered variant; no suffix -> the entry itself.
+fn expand_variants(name: &PasswordRef) -> Vec<PasswordRef> {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"^.+?(G+|X+)$").unwrap();
+    }
+    let pwd = name.lock();
+    let mut genpwds: Vec<PasswordRef> = Vec::new();
+    match RE.captures(pwd.borrow().name.as_ref()) {
+        Some(caps) => {
+            let gen = &caps[1];
+            if gen.starts_with("G") {
+                let name = pwd.borrow().name.trim_end_matches('G').to_string();
+                for num in 1..10_u32.pow(gen.len().try_into().unwrap()) {
+                    let npwd = Password::from_password_ref(&pwd.borrow());
+                    npwd.lock().borrow_mut().name = format!("{}{}", name, num).to_string();
+                    genpwds.push(npwd);
+                }
+            } else {
+                let name = pwd.borrow().name.trim_end_matches('X').to_string();
+                let num = rnd::range(1, 10_u32.pow(gen.len().try_into().unwrap()));
+                let npwd = Password::from_password_ref(&pwd.borrow());
+                npwd.lock().borrow_mut().name = format!("{}{}", name, num).to_string();
+                genpwds.push(npwd);
+            }
+        }
+        None => {
+            let npwd = Password::from_password_ref(&pwd.borrow());
+            genpwds.push(npwd);
+        }
+    }
+    genpwds
 }
 
 /// The armored payloads of a comment's inline `#`/`!` blobs (whitespace-delimited

@@ -102,6 +102,13 @@ impl Password {
     }
 
     pub fn encode(&self, secret: &str) -> String {
+        // A `$`-subtree entry renders the UNFOLDED 160-bit value (15 words / 40
+        // hex / …) — same modes, wider input. Chaining goes through this same
+        // rendering, so the full width propagates to every descendant's master.
+        if self.is_unfolded() {
+            let h = SKey::unfolded(&self.name, self.seq, secret);
+            return render_wide(&h, &self.prefix, &self.length, &self.mode);
+        }
         let (sep, len) = match (&self.length, &self.mode) {
             (Some(n), Mode::NoSpace | Mode::NoSpaceUpcase) => ("", n),
             (Some(n), Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase) => ("", n),
@@ -112,22 +119,7 @@ impl Password {
             }
             (None, _) => (" ", &0_u32),
         };
-        // A `$`-subtree entry renders the UNFOLDED 160-bit value (15 words / 40
-        // hex / …) — same modes, wider input. Chaining goes through this same
-        // rendering, so the full width propagates to every descendant's master.
-        let result = if self.is_unfolded() {
-            let h = SKey::unfolded(&self.name, self.seq, secret);
-            match self.mode {
-                Mode::Regular | Mode::NoSpace | Mode::Totp => SKey::wide_words(&h).join(sep),
-                Mode::RegularUpcase | Mode::NoSpaceUpcase => SKey::wide_words(&h).join(sep).to_uppercase(),
-                Mode::NoSpaceCamel => camel_case(&SKey::wide_words(&h)),
-                Mode::Hex => SKey::wide_hex(&h),
-                Mode::HexUpcase => SKey::wide_hex(&h).to_uppercase(),
-                Mode::Base64 => SKey::wide_b64(&h),
-                Mode::Base64Upcase => SKey::wide_b64(&h).to_uppercase(),
-                Mode::Decimal => SKey::wide_dec(&h).map(|v| v.to_string()).join(sep),
-            }
-        } else {
+        let result = {
             let skey = SKey::new(&self.name, self.seq, secret);
             match self.mode {
                 Mode::Regular => skey.to_words().join(sep),
@@ -200,6 +192,41 @@ impl PartialEq for Password {
             && self.length == other.length
             && self.mode == other.mode
             && self.seq == other.seq
+    }
+}
+
+/// Render a full-width 160-bit value in a given mode/prefix/length — the `$`
+/// (unfolded) rendering. Shared by `encode()` for `$`-subtree entries and by
+/// `rnd` for pure random values (no derivation at all).
+pub fn render_wide(h: &[u8; 20], prefix: &Prefix, length: &Length, mode: &Mode) -> String {
+    let (sep, len) = match (length, mode) {
+        (Some(n), Mode::NoSpace | Mode::NoSpaceUpcase) => ("", n),
+        (Some(n), Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase) => ("", n),
+        (Some(n), _) => ("", n),
+        (None, Mode::NoSpace | Mode::NoSpaceUpcase) => ("-", &0_u32),
+        (None, Mode::Base64 | Mode::Base64Upcase | Mode::Hex | Mode::HexUpcase | Mode::NoSpaceCamel) => {
+            ("", &0_u32)
+        }
+        (None, _) => (" ", &0_u32),
+    };
+    let result = match mode {
+        Mode::Regular | Mode::NoSpace | Mode::Totp => SKey::wide_words(h).join(sep),
+        Mode::RegularUpcase | Mode::NoSpaceUpcase => SKey::wide_words(h).join(sep).to_uppercase(),
+        Mode::NoSpaceCamel => camel_case(&SKey::wide_words(h)),
+        Mode::Hex => SKey::wide_hex(h),
+        Mode::HexUpcase => SKey::wide_hex(h).to_uppercase(),
+        Mode::Base64 => SKey::wide_b64(h),
+        Mode::Base64Upcase => SKey::wide_b64(h).to_uppercase(),
+        Mode::Decimal => SKey::wide_dec(h).map(|v| v.to_string()).join(sep),
+    };
+    let result = match prefix {
+        Some(p) => (p.to_owned() + sep + &result).to_string(),
+        None => result,
+    };
+    if len > &0_u32 {
+        result.chars().take(*len as usize).collect()
+    } else {
+        result
     }
 }
 

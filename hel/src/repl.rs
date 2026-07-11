@@ -164,6 +164,7 @@ impl<'a> LKEval<'a> {
             }
             Command::Reveal(name) => self.cmd_reveal(&out, name),
             Command::Gen(num, name) => self.cmd_gen(&out, &num, &name),
+            Command::Rnd(num, name) => self.cmd_rnd(&out, &num, &name),
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
             Command::Source(script) => {
                 quit = self.cmd_source(&out, script);
@@ -619,6 +620,54 @@ mod tests {
         let code = pr.out.out.as_ref().unwrap().lock()[0].clone();
         assert_eq!(code.len(), 6);
         assert!(code.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn rnd_generates_random_passphrases_without_master() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // capture -> bare passwords; news' read_password always errors, which
+        // proves rnd never asks for a master
+        let cap = |cmd: &str| {
+            LKEval::news(command_parser::cmd(cmd).unwrap(), lk.clone()).with_capture(true).eval()
+        };
+        // bare rnd = `$rnd` descriptor -> wide 15-word candidates, all distinct
+        let pr = cap("rnd3");
+        let lines = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(lines.len(), 3);
+        for l in &lines {
+            assert_eq!(l.split(' ').count(), 15, "wide rendering: {}", l);
+        }
+        assert_ne!(lines[0], lines[1]);
+        assert!(pr.out.err.as_ref().unwrap().lock().is_empty());
+
+        // a name WITHOUT `$` respects the folded rendering (6 words)
+        let pr = cap("rnd3 vault");
+        let lines = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(lines.len(), 3);
+        for l in &lines {
+            assert_eq!(l.split(' ').count(), 6, "folded rendering: {}", l);
+        }
+        assert_ne!(lines[0], lines[1]);
+
+        // mode/length honored per $-ness: a folded UB value is 11 b64 chars
+        // (len 20 cannot extend it); the wide one is 27, truncated to 20
+        let pr = cap("rnd1 x 20UB");
+        let lines = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].chars().count(), 11);
+        assert_eq!(lines[0], lines[0].to_uppercase());
+        let pr = cap("rnd1 $x 20UB");
+        let lines = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(lines[0].chars().count(), 20);
+
+        // G-suffix expands numbered variants, table row names like gen's
+        let pr = LKEval::news(command_parser::cmd("rnd4 testGG R 99 2026-1-1").unwrap(), lk.clone()).eval();
+        let rows = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(rows.len(), 5); // header + 4 rows
+        assert!(rows[0].contains("Password") && rows[0].contains("Name"));
+        for r in &rows[1..] {
+            assert!(r.contains(" test"), "variant name in row: {}", r);
+        }
     }
 
     #[test]
