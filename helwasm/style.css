@@ -154,7 +154,21 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-colu
 
 /* Form fields */
 .fields { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items: end; }
-.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; position: relative; }
+/* Name autocomplete dropdown (custom; replaces the flaky native <datalist>). */
+.suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(10, 16, 24, 0.12);
+  max-height: 262px; overflow: auto; padding: 4px;
+}
+.suggest[hidden] { display: none; }
+.suggest .opt {
+  font-family: var(--mono); font-size: 13px; color: var(--ink);
+  padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.suggest .opt:hover, .suggest .opt.active { background: rgba(27, 65, 97, 0.08); color: var(--ocean); }
 .field label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 input[type="text"], input[type="password"] {
   /* 16px min: iOS Safari auto-zooms (and stays zoomed) when a focused input is
@@ -234,7 +248,11 @@ input.mask.revealed { -webkit-text-security: none; }
 }
 .secret:empty::before { content: "type a name + master"; color: var(--muted); font-size: 14px; -webkit-text-security: none; font-family: var(--body); cursor: default; }
 
-/* Console */
+/* Console: collapsible <details>, same pattern as the help panel. Calm ocean
+   badge — the pulsing red attention badge stays reserved for Help. */
+.console-card .about-badge { background: var(--ocean); animation: none; }
+/* The console hint is a hint, not the about lede (which .about-body > p:first-child styles). */
+.console-body > p:first-child { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
 .console-out {
   font-family: var(--mono); font-size: 13.5px; line-height: 1.55;
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
@@ -289,10 +307,18 @@ input.mask.revealed { -webkit-text-security: none; }
     padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 8px; background: var(--paper);
   }
-  body.shell-focus .console-card .eyebrow,
-  body.shell-focus .console-card h2,
+  body.shell-focus .console-card > summary,
   body.shell-focus .console-card .hint,
   body.shell-focus .console-resize { display: none; }
+  /* the body becomes the flex column that fills the card (summary is hidden);
+     <details> lays out its content inside an internal ::details-content box, so
+     that wrapper must become transparent for the body to be the card's flex item.
+     Scoped to shell-focus: unscoped it would defeat the closed-state hiding. */
+  body.shell-focus .console-card::details-content { display: contents; }
+  body.shell-focus .console-body {
+    display: flex; flex-direction: column; gap: 8px;
+    flex: 1 1 auto; min-height: 0; padding: 0;
+  }
   body.shell-focus .console-out {
     flex: 1 1 auto; min-height: 0; height: auto; margin: 0;   /* grows, scrolls */
   }
@@ -377,6 +403,7 @@ input.mask.revealed { -webkit-text-security: none; }
 }
 .cl-tag-new { color: var(--ocean); background: rgba(27, 65, 97, 0.10); }
 .cl-tag-improved { color: var(--muted); background: rgba(106, 103, 94, 0.13); }
+.cl-tag-fixed { color: var(--seal); background: rgba(226, 59, 46, 0.10); }
 .cl-text { min-width: 0; }
 .changelog code { font-family: var(--mono); font-size: 12px; color: var(--ocean-2); background: rgba(27,65,97,.06); padding: 1px 5px; border-radius: 5px; }
 /* On phones the fixed tag column would crowd the text — let each item stack. */
