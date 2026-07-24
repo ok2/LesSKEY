@@ -273,7 +273,9 @@ save [target]    persist it. <target>:
                    <path>      a file
                    -           print to screen (same as dump)
                    |<command>  pipe the dump into <command>'s stdin
-                 A diff (< removed, > added) vs the last load/save is shown.
+                 The full diff vs the first load / last save is always shown
+                 (< removed, > added; later `source`s count as unsaved changes;
+                 `no changes since last load/save` when clean).
 source <target>  load a catalog. <target>:
                    <path>      a file (a localStorage key in the wasm build)
                    <command>|  run <command>, load its stdout as a script
@@ -899,10 +901,14 @@ impl<'a> LKEval<'a> {
                 out.e(format!("error: {}", e.to_string()));
             }
         };
-        // Baseline for the next save diff: the just-loaded state is the new
-        // "previously persisted" reference.
-        let snapshot = self.serialize_db();
-        self.state.lock().borrow_mut().last_dump = Some(snapshot);
+        // Baseline for the next save diff: only the FIRST load establishes the
+        // "previously persisted" reference. Later `source`s merge into the
+        // session, so the baseline stays put and everything they import shows
+        // up in the `save` diff like any other unsaved change.
+        if self.state.lock().borrow().last_dump.is_none() {
+            let snapshot = self.serialize_db();
+            self.state.lock().borrow_mut().last_dump = Some(snapshot);
+        }
         false
     }
 
@@ -917,20 +923,25 @@ impl<'a> LKEval<'a> {
     }
 
     /// Emit a `< removed` / `> added` line diff of `new` against the last saved/
-    /// loaded snapshot (set-based, so dump ordering doesn't matter). No-op until
-    /// a baseline exists.
+    /// loaded snapshot (set-based, so dump ordering doesn't matter). Without a
+    /// baseline the whole catalog counts as added, and a clean save says so
+    /// explicitly — every save shows its full diff, always.
     fn show_dump_diff(&self, out: &LKOut, new: &str) {
-        let prev = self.state.lock().borrow().last_dump.clone();
-        if let Some(prev) = prev {
-            use std::collections::BTreeSet;
-            let p: BTreeSet<&str> = prev.lines().filter(|l| !l.is_empty()).collect();
-            let n: BTreeSet<&str> = new.lines().filter(|l| !l.is_empty()).collect();
-            for l in p.difference(&n) {
-                out.o(format!("< {}", l));
-            }
-            for l in n.difference(&p) {
-                out.o(format!("> {}", l));
-            }
+        let prev = self.state.lock().borrow().last_dump.clone().unwrap_or_default();
+        use std::collections::BTreeSet;
+        let p: BTreeSet<&str> = prev.lines().filter(|l| !l.is_empty()).collect();
+        let n: BTreeSet<&str> = new.lines().filter(|l| !l.is_empty()).collect();
+        let mut changed = false;
+        for l in p.difference(&n) {
+            out.o(format!("< {}", l));
+            changed = true;
+        }
+        for l in n.difference(&p) {
+            out.o(format!("> {}", l));
+            changed = true;
+        }
+        if !changed {
+            out.o("no changes since last load/save".to_string());
         }
     }
 

@@ -6,6 +6,18 @@ recorded here, newest first. The web app mirrors these entries in its in-app
 [Keep a Changelog](https://keepachangelog.com/); versions are the web app's
 release stamp.
 
+## [Unreleased]
+
+### Fixed
+
+- **`save` diff is always complete.** The `< removed` / `> added` diff now
+  covers every unsaved change, always: with no baseline (nothing loaded yet)
+  the whole catalog shows as added; a later `source` no longer resets the
+  baseline, so imported entries appear in the diff (only the first load and
+  each successful save move it — a `reset yes` + reimport shows its sealing
+  changes too); a clean save prints `no changes since last load/save` instead
+  of nothing.
+
 ## [1.2.0] - 2026-07-10 — One-time codes, and a real shell on your phone
 
 ### Added

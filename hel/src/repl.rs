@@ -833,4 +833,38 @@ mod tests {
         assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 1);
         assert!(pr.out.out.as_ref().unwrap().lock()[0].contains(' ')); // six S/KEY words, not a name
     }
+
+    #[test]
+    fn save_diff_always_complete_test() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        let tmp = std::env::temp_dir().join(format!("hel_save_diff_{}", std::process::id()));
+        let target = tmp.to_str().unwrap().to_string();
+
+        // No baseline yet: the first save lists the whole catalog as added.
+        LKEval::news(command_parser::cmd("add t1").unwrap(), lk.clone()).eval();
+        LKEval::news(command_parser::cmd("add t2").unwrap(), lk.clone()).eval();
+        let pr = LKEval::news(Command::Dump(Some(target.clone())), lk.clone()).eval();
+        let out = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(out.iter().filter(|l| l.starts_with("> add")).count(), 2);
+
+        // Clean save: an explicit marker instead of silence.
+        let pr = LKEval::news(Command::Dump(Some(target.clone())), lk.clone()).eval();
+        let out = pr.out.out.as_ref().unwrap().lock().clone();
+        assert!(out.iter().any(|l| l == "no changes since last load/save"));
+        assert!(!out.iter().any(|l| l.starts_with("< ") || l.starts_with("> ")));
+
+        // A later `source` merges as unsaved changes, so its adds appear in the
+        // diff alongside other edits (the baseline only moves on load/save).
+        let src = std::env::temp_dir().join(format!("hel_save_diff_src_{}", std::process::id()));
+        std::fs::write(&src, "add t3\n").unwrap();
+        LKEval::news(Command::Source(src.to_str().unwrap().to_string()), lk.clone()).eval();
+        LKEval::news(command_parser::cmd("rm t2").unwrap(), lk.clone()).eval();
+        let pr = LKEval::news(Command::Dump(Some(target.clone())), lk.clone()).eval();
+        let out = pr.out.out.as_ref().unwrap().lock().clone();
+        assert_eq!(out.iter().filter(|l| l.starts_with("> add") && l.contains(" t3 ")).count(), 1);
+        assert_eq!(out.iter().filter(|l| l.starts_with("< add") && l.contains(" t2 ")).count(), 1);
+
+        std::fs::remove_file(&tmp).ok();
+        std::fs::remove_file(&src).ok();
+    }
 }
