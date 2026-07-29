@@ -140,6 +140,10 @@
             <input type="text" id="master" class="mask" placeholder="your master phrase" title="click to show or hide" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" readonly data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other" data-protonpass-ignore="true" data-kpxc-ignore="true" />
           </div>
         </div>
+        <!-- Facts about the STORED entry behind the typed name: its ^parent (tap
+             to jump to that entry) and any URL / e-mail found in its comment
+             (tap to copy; the URL chip also opens). Hidden when there is none. -->
+        <div class="entry-meta" id="qmeta" hidden></div>
         <div class="result">
           <span class="tag">result</span>
           <span class="secret" id="qsecret" title="click to reveal"></span>
@@ -258,6 +262,12 @@
       // is { tag: "New" | "Improved", text }; `text` may hold inline <code> for command
       // names (authored/trusted content, rendered as HTML). `title` = the release theme.
       const CHANGELOG = [
+        { version: "1.3.0", date: "2026-07-29", title: "Find anything, see everything", changes: [
+          { tag: "New", text: "The name field now searches your whole catalog, not just name beginnings: what you type is a regular expression matched against the full stored line — name, mode, date, comment and <code>^parent</code>, exactly the export form. <code>mail.*work</code>, <code>^git</code>, <code>2024-</code> or a plain fragment all work (spaces still mean name&nbsp;+&nbsp;rules; write <code>\\s</code> instead). <code>(?-i)</code> forces case-sensitivity, like <code>ls</code>." },
+          { tag: "Improved", text: "Suggestions show what you'd actually pick: the name in bold with its <code>^parent</code> beside it and the start of the comment underneath — no more guessing between five <code>microsoft…</code> entries." },
+          { tag: "New", text: "Below the name, quiet chips show the stored entry's facts: its <code>^parent</code> (tap to jump to that entry), and any web address or e-mail found in the comment — tap to copy, <code>↗</code> opens the site." },
+          { tag: "Fixed", text: "The <code>save</code> diff is always complete: with nothing loaded yet the whole catalog shows as added, imports after a <code>source</code> appear too, and a clean save says <code>no changes since last load/save</code>." },
+        ] },
         { version: "1.2.1", date: "2026-07-15", title: "A tidier desk", changes: [
           { tag: "Fixed", text: "Name suggestions are now a proper dropdown: arrow keys move the highlight, Enter picks, Escape closes — and it closes by itself after a pick or when you leave the field. The old native list could only be clicked and often refused to close on desktop." },
           { tag: "Improved", text: "The console folds away like the Help panel — closed by default, one click on its header to open — and remembers whether you left it open." },
@@ -352,12 +362,32 @@
 
       // ls-style name autocomplete for #qname. A custom dropdown, NOT a native
       // <datalist>: on desktop the datalist popup can't be keyboard-picked once its
-      // options are rebuilt mid-typing, and it won't dismiss. hel_names reads
-      // db.keys() only, so it never mutates the catalog or ls state (quick-gen stays
-      // stateless). Only offers suggestions while typing the NAME (no whitespace
-      // yet), so it doesn't fight the "name + rules" spec once rules are added, and
-      // never dumps the whole catalog on an empty field. Capped for large catalogs.
+      // options are rebuilt mid-typing, and it won't dismiss. What you type is a
+      // REGEX matched against the full stored line (name, mode, seq, date, comment,
+      // ^parent — the exact dump/export form), same semantics as `ls`: `^`/`$`
+      // anchor the whole line, partial matches hit anywhere, `(?-i)` forces case.
+      // hel_names is read-only, so it never mutates the catalog or ls state
+      // (quick-gen stays stateless). Only offers suggestions while typing a
+      // whitespace-free pattern (use `\s` in a regex), so it doesn't fight the
+      // "name + rules" spec once rules are added, and never dumps the whole
+      // catalog on an empty field. Capped for large catalogs.
       const MAX_SUGGESTIONS = 50;
+
+      // Split a canonical stored line (`[prefix ]name [len]mode seq date [comment]
+      // [^parent]`) into the bits the UI shows. The name comes from the engine's
+      // own parser (handles a leading prefix); the parent is the trailing ^token;
+      // the comment is everything between the date and the parent (token-joined,
+      // so inner runs of spaces collapse — fine for display).
+      function parseEntryLine(line) {
+        const t = line.trim();
+        const name = hel_parse_name(t);
+        const pm = t.match(/\s\^(\S+)$/);
+        const rest = pm ? t.slice(0, pm.index) : t;
+        const toks = rest.split(/\s+/);
+        const ni = toks.indexOf(name);
+        const comment = ni >= 0 ? toks.slice(ni + 4).join(" ") : "";
+        return { name, parent: pm ? pm[1] : "", comment };
+      }
       let suggestActive = -1; // index of the keyboard-highlighted option, -1 = none
       function closeSuggest() {
         const box = $("#qnames");
@@ -388,19 +418,39 @@
         if (!box) return;
         const spec = $("#qname").value;
         if (!spec || /\s/.test(spec)) { closeSuggest(); return; } // empty/rules → none
-        const names = hel_names(spec).split("\n").filter(Boolean).slice(0, MAX_SUGGESTIONS);
+        const lines = hel_names(spec).split("\n").filter(Boolean).slice(0, MAX_SUGGESTIONS);
+        const ents = lines.map(parseEntryLine);
         // nothing to offer, or the only match is what's already typed → close
-        if (!names.length || (names.length === 1 && names[0] === spec)) { closeSuggest(); return; }
+        if (!ents.length || (ents.length === 1 && ents[0].name === spec)) { closeSuggest(); return; }
         suggestActive = -1;
         $("#qname").removeAttribute("aria-activedescendant");
-        box.replaceChildren(...names.map((n, i) => {
+        box.replaceChildren(...ents.map((ent, i) => {
           const o = document.createElement("div");
           o.className = "opt";
           o.id = "qopt-" + i;
           o.setAttribute("role", "option");
-          o.textContent = n;
+          o.dataset.name = ent.name;
+          const top = document.createElement("div");
+          top.className = "opt-top";
+          const nm = document.createElement("span");
+          nm.className = "opt-name";
+          nm.textContent = ent.name;
+          top.appendChild(nm);
+          if (ent.parent) {
+            const pa = document.createElement("span");
+            pa.className = "opt-parent";
+            pa.textContent = "^ " + ent.parent;
+            top.appendChild(pa);
+          }
+          o.appendChild(top);
+          if (ent.comment) {
+            const co = document.createElement("div");
+            co.className = "opt-comment";
+            co.textContent = ent.comment;
+            o.appendChild(co);
+          }
           // pointerdown (not click): preventDefault keeps #qname focused, so no blur
-          o.addEventListener("pointerdown", (e) => { e.preventDefault(); acceptSuggest(n); });
+          o.addEventListener("pointerdown", (e) => { e.preventDefault(); acceptSuggest(ent.name); });
           return o;
         }));
         box.hidden = false;
@@ -488,6 +538,67 @@
           b.title = "In your catalog. Type the master to mark it correct.";
         }
       }
+      // ---- entry meta chips: parent / URL / e-mail of the stored entry ----
+      // Derived on every regen from the entry's canonical stored line. The URL and
+      // e-mail live in the free-text comment; show them as copyable chips so the
+      // catalog doubles as a "where do I log in with what" card. Nothing here is
+      // secret (the comment is stored in the clear), so plain buttons are fine.
+      function metaChip(kindLabel, valueLabel, title, onClick) {
+        const c = document.createElement("button");
+        c.type = "button";
+        c.className = "chip";
+        c.title = title || "Click to copy";
+        const k = document.createElement("span");
+        k.className = "k";
+        k.textContent = kindLabel;
+        const v = document.createElement("span");
+        v.className = "v";
+        v.textContent = valueLabel;
+        c.append(k, v);
+        c.addEventListener("click", onClick);
+        return c;
+      }
+      function refreshEntryMeta(name) {
+        const box = $("#qmeta");
+        if (!box) return;
+        const stored = name ? hel_entry(name) : "";
+        if (!stored) { box.hidden = true; box.replaceChildren(); return; }
+        const ent = parseEntryLine(stored);
+        const chips = [];
+        if (ent.parent) {
+          // Jumping beats copying for a parent: load its stored spec into the
+          // name field, exactly as picking it from the suggestions would.
+          chips.push(metaChip("parent", ent.parent,
+            "Derived from ^" + ent.parent + " — click to open that entry", () => {
+              $("#qname").value = hel_entry(ent.parent) || ent.parent;
+              closeSuggest();
+              quickGen(true);
+            }));
+        }
+        // First http(s) URL in the comment; the e-mail is searched with URLs cut
+        // out, so a user@host inside a URL doesn't masquerade as an address.
+        const url = (ent.comment.match(/https?:\/\/[^\s"'<>)\]]+/) || [])[0];
+        if (url) {
+          let host = url;
+          try { host = new URL(url).host; } catch {}
+          const c = metaChip("url", host, "Click to copy " + url, () => copyText(url));
+          const a = document.createElement("a");
+          a.className = "chip-open";
+          a.href = url;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.textContent = "↗";
+          a.title = "Open " + url;
+          a.addEventListener("click", (e) => e.stopPropagation()); // open, don't copy
+          c.appendChild(a);
+          chips.push(c);
+        }
+        const mail = (ent.comment.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>)\]]+/gi, " ")
+          .match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [])[0];
+        if (mail) chips.push(metaChip("mail", mail, "Click to copy " + mail, () => copyText(mail)));
+        box.replaceChildren(...chips);
+        box.hidden = !chips.length;
+      }
       // Shrink the result font just enough to keep it on one line on very narrow screens
       // (iPhone) instead of wrapping. Falls back to wrapping only if even the floor size
       // can't fit. Masking doesn't change width (mono disc = mono char), so reveal is safe.
@@ -518,6 +629,7 @@
           sec.textContent = ""; sec.classList.remove("correct"); sec.style.fontSize = "";
           lenEl.textContent = ""; lastSecret = "";
           refreshSaveBtn("", false, false);
+          refreshEntryMeta("");
           return;
         }
         const master = masterEl().value;
@@ -548,6 +660,7 @@
         lenEl.textContent = pw ? "len " + pw.length : "";
         fitResult();
         refreshSaveBtn(name, !!pw, correct);
+        refreshEntryMeta(name);
         if (!pw && !silent) toast("No output");
       }
       // ---- hierarchy climb: generate a ^parent-derived name when the master field
@@ -851,7 +964,7 @@
             if (open) { e.preventDefault(); closeSuggest(); }
           } else if (e.key === "Enter") {
             e.preventDefault();
-            if (open && suggestActive >= 0) { acceptSuggest($("#qnames").children[suggestActive].textContent); return; }
+            if (open && suggestActive >= 0) { acceptSuggest($("#qnames").children[suggestActive].dataset.name); return; }
             closeSuggest();
             $("#master").focus();
           }

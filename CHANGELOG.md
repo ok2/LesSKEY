@@ -8,6 +8,25 @@ release stamp.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-29 — Find anything, see everything
+
+### Added
+
+- **Regex catalog search in the name field.** `hel_names` now mirrors `ls`:
+  the typed text is a regular expression matched anywhere in the full
+  canonical stored line (`name [len]mode seq date comment ^parent` — the
+  dump/export form), case-insensitive with `(?-i)` opt-out, `^`/`$`
+  anchoring the whole line. A half-typed pattern that doesn't compile falls
+  back to a literal substring match so the dropdown never flickers away.
+  Still read-only over `db` values (never rebuilds `lk.ls`).
+- **Rich suggestion rows.** Each suggestion shows the entry name (bold), its
+  `^parent` beside it, and the start of the comment underneath, instead of
+  the bare name.
+- **Entry meta chips.** Under the name field, chips surface the stored
+  entry's `^parent` (click jumps to that entry), plus the first http(s) URL
+  and e-mail address parsed out of the comment — click to copy; the URL chip
+  carries an `↗` link that opens the site.
+
 ### Fixed
 
 - **`save` diff is always complete.** The `< removed` / `> added` diff now

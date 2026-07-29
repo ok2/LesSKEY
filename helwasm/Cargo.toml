@@ -16,4 +16,5 @@ hel = { version = "0.1.0", path = "../hel" }
 lazy_static = "1.5.0"
 wasm-bindgen = "0.2.126"
 parking_lot = "0.12.5"
+regex = "1.13.0"
 console_error_panic_hook = "0.1.7"

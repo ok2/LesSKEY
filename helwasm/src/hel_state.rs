@@ -4,6 +4,7 @@ use hel::repl::{LKEval, LKRead};
 use hel::structs::LKOut;
 use hel::utils::editor::{password, Editor};
 use parking_lot::ReentrantMutex;
+use regex::Regex;
 use std::cell::RefCell;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -60,33 +61,36 @@ pub fn hel_entry(name: String) -> String {
     }
 }
 
-/// Return catalog entry names beginning with `prefix`, one per line, sorted —
-/// the `ls`-style completion set for a typed name. Read-only: reads `db` keys
-/// only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and can
-/// never add to the catalog. Case-insensitive by default; a leading `(?-i)`
-/// forces case-sensitive, mirroring `ls`. Empty prefix returns every name.
+/// Return catalog entries matching `pattern`, one canonical stored line per
+/// line (`name [len]mode seq date comment ^parent` — the dump/export form),
+/// sorted — the completion set for a typed name. The pattern is a regular
+/// expression matched anywhere in the full canonical line, mirroring `ls`
+/// (so `^`/`$` anchor against the whole line, and mode/comment/parent are
+/// searchable too). Case-insensitive by default; a leading `(?-i)` forces
+/// case-sensitive, exactly like `ls`. A pattern that does not compile (e.g.
+/// a half-typed `micro(`) falls back to a literal substring match, so
+/// suggestions never vanish mid-keystroke. Read-only: reads `db` values
+/// only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and
+/// can never add to the catalog.
 #[wasm_bindgen]
-pub fn hel_names(prefix: String) -> String {
-    let (case_sensitive, needle) = match prefix.strip_prefix("(?-i)") {
-        Some(rest) => (true, rest.trim_start()),
-        None => (false, prefix.as_str()),
+pub fn hel_names(pattern: String) -> String {
+    // Same case rule as cmd_ls: prepend (?i); an inline (?-i) still wins.
+    let re = Regex::new(&format!("(?i){}", pattern))
+        .or_else(|_| Regex::new(&format!("(?i){}", regex::escape(&pattern))));
+    let re = match re {
+        Ok(re) => re,
+        Err(_) => return String::new(),
     };
-    let needle_lc = needle.to_lowercase();
     let cell = STATE.lock();
     let lk = cell.borrow();
-    let mut names: Vec<&String> = lk
+    let mut lines: Vec<String> = lk
         .db
-        .keys()
-        .filter(|name| {
-            if case_sensitive {
-                name.starts_with(needle)
-            } else {
-                name.to_lowercase().starts_with(&needle_lc)
-            }
-        })
+        .values()
+        .map(|p| p.lock().borrow().to_string().trim().to_string())
+        .filter(|line| re.find(line).is_some())
         .collect();
-    names.sort(); // byte-lexicographic == cmd_ls's name.cmp
-    names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n")
+    lines.sort(); // lines start with the name → byte-lexicographic like cmd_ls
+    lines.join("\n")
 }
 
 /// Return the `^parent` chain of `name`, immediate parent first, one per line

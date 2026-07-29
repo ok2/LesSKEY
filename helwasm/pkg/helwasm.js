@@ -98,19 +98,25 @@ export function hel_load_script(script) {
 }
 
 /**
- * Return catalog entry names beginning with `prefix`, one per line, sorted —
- * the `ls`-style completion set for a typed name. Read-only: reads `db` keys
- * only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and can
- * never add to the catalog. Case-insensitive by default; a leading `(?-i)`
- * forces case-sensitive, mirroring `ls`. Empty prefix returns every name.
- * @param {string} prefix
+ * Return catalog entries matching `pattern`, one canonical stored line per
+ * line (`name [len]mode seq date comment ^parent` — the dump/export form),
+ * sorted — the completion set for a typed name. The pattern is a regular
+ * expression matched anywhere in the full canonical line, mirroring `ls`
+ * (so `^`/`$` anchor against the whole line, and mode/comment/parent are
+ * searchable too). Case-insensitive by default; a leading `(?-i)` forces
+ * case-sensitive, exactly like `ls`. A pattern that does not compile (e.g.
+ * a half-typed `micro(`) falls back to a literal substring match, so
+ * suggestions never vanish mid-keystroke. Read-only: reads `db` values
+ * only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and
+ * can never add to the catalog.
+ * @param {string} pattern
  * @returns {string}
  */
-export function hel_names(prefix) {
+export function hel_names(pattern) {
     let deferred2_0;
     let deferred2_1;
     try {
-        const ptr0 = passStringToWasm0(prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const ptr0 = passStringToWasm0(pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.hel_names(ptr0, len0);
         deferred2_0 = ret[0];

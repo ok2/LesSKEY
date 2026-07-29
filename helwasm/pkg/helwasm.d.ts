@@ -37,13 +37,19 @@ export function hel_init(): void;
 export function hel_load_script(script: string): string;
 
 /**
- * Return catalog entry names beginning with `prefix`, one per line, sorted —
- * the `ls`-style completion set for a typed name. Read-only: reads `db` keys
- * only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and can
- * never add to the catalog. Case-insensitive by default; a leading `(?-i)`
- * forces case-sensitive, mirroring `ls`. Empty prefix returns every name.
+ * Return catalog entries matching `pattern`, one canonical stored line per
+ * line (`name [len]mode seq date comment ^parent` — the dump/export form),
+ * sorted — the completion set for a typed name. The pattern is a regular
+ * expression matched anywhere in the full canonical line, mirroring `ls`
+ * (so `^`/`$` anchor against the whole line, and mode/comment/parent are
+ * searchable too). Case-insensitive by default; a leading `(?-i)` forces
+ * case-sensitive, exactly like `ls`. A pattern that does not compile (e.g.
+ * a half-typed `micro(`) falls back to a literal substring match, so
+ * suggestions never vanish mid-keystroke. Read-only: reads `db` values
+ * only, so (unlike `ls`) it never rebuilds `lk.ls` or mutates state, and
+ * can never add to the catalog.
  */
-export function hel_names(prefix: string): string;
+export function hel_names(pattern: string): string;
 
 /**
  * Parse a password spec (e.g. `exa91` or `exa91 20R 99 2020-01-01`) and return
@@ -64,6 +70,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly hel_init: () => void;
     readonly hel_chain: (a: number, b: number) => [number, number];
     readonly hel_command: (a: number, b: number) => [number, number];
     readonly hel_entry: (a: number, b: number) => [number, number];
@@ -71,7 +78,6 @@ export interface InitOutput {
     readonly hel_names: (a: number, b: number) => [number, number];
     readonly hel_parse: (a: number, b: number) => [number, number];
     readonly hel_parse_name: (a: number, b: number) => [number, number];
-    readonly hel_init: () => void;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

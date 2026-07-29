@@ -164,11 +164,21 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-colu
 }
 .suggest[hidden] { display: none; }
 .suggest .opt {
-  font-family: var(--mono); font-size: 13px; color: var(--ink);
-  padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  font-family: var(--mono); color: var(--ink);
+  padding: 7px 10px; border-radius: 7px; cursor: pointer; min-width: 0;
+}
+.suggest .opt-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.suggest .opt-name {
+  font-size: 13px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.suggest .opt:hover, .suggest .opt.active { background: rgba(27, 65, 97, 0.08); color: var(--ocean); }
+.suggest .opt-parent { font-size: 11px; color: var(--muted); white-space: nowrap; flex: none; }
+.suggest .opt-comment {
+  font-size: 11.5px; color: var(--muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.suggest .opt:hover, .suggest .opt.active { background: rgba(27, 65, 97, 0.08); }
+.suggest .opt:hover .opt-name, .suggest .opt.active .opt-name { color: var(--ocean); }
 .field label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 input[type="text"], input[type="password"] {
   /* 16px min: iOS Safari auto-zooms (and stays zoomed) when a focused input is
@@ -211,6 +221,27 @@ input.mask.revealed { -webkit-text-security: none; }
 .btn.small.is-stored { opacity: 1; }
 
 /* Quick-gen result row */
+/* Entry meta chips: parent / URL / e-mail of the stored entry behind the typed
+   name. Quiet pills between the fields and the result — informative at a
+   glance, one tap to copy (URL chip also opens via its ↗). */
+.entry-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.entry-meta[hidden] { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 11px; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.chip:hover { border-color: var(--ocean); color: var(--ocean); }
+.chip .k {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); flex: none;
+}
+.chip .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip .chip-open { color: var(--muted); text-decoration: none; flex: none; padding: 0 2px; }
+.chip .chip-open:hover { color: var(--ocean); }
+
 .result {
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
   margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line);
