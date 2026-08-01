@@ -200,6 +200,7 @@
       <div class="modal">
         <h3>Import catalog</h3>
         <p class="hint">Paste your catalog — raw <code>add …</code> lines, or a whole markdown page (a Notion <code>dump</code> split across code blocks works as-is; only the code blocks are read). Existing entries with the same name are replaced.</p>
+        <div class="modal-status" id="importStatus" hidden></div>
         <textarea id="importText" placeholder="add ..."></textarea>
         <div class="row">
           <button class="btn" id="importDo">Import</button>
@@ -262,6 +263,11 @@
       // is { tag: "New" | "Improved", text }; `text` may hold inline <code> for command
       // names (authored/trusted content, rendered as HTML). `title` = the release theme.
       const CHANGELOG = [
+        { version: "1.3.1", date: "2026-08-01", title: "An honest importer", changes: [
+          { tag: "Fixed", text: "Import no longer claims success when nothing happened. The engine imports all-or-nothing (one broken line rejects the whole paste — your catalog is never half-replaced), but the dialog used to say “Imported” either way. It now reports the problem, shows the offending errors, and stays open; a clean import confirms with the real entry count." },
+          { tag: "Fixed", text: "A paste with Windows line endings (CR&nbsp;LF) imported nothing; it now imports normally." },
+          { tag: "Fixed", text: "A markdown paste whose final code fence is unterminated (e.g. a truncated page copy) silently dropped that block; its lines are now imported." },
+        ] },
         { version: "1.3.0", date: "2026-07-29", title: "Find anything, see everything", changes: [
           { tag: "New", text: "The name field now searches your whole catalog, not just name beginnings: what you type is a regular expression matched against the full stored line — name, mode, date, comment and <code>^parent</code>, exactly the export form. <code>mail.*work</code>, <code>^git</code>, <code>2024-</code> or a plain fragment all work (spaces still mean name&nbsp;+&nbsp;rules; write <code>\\s</code> instead). <code>(?-i)</code> forces case-sensitivity, like <code>ls</code>." },
           { tag: "Improved", text: "Suggestions show what you'd actually pick: the name in bold with its <code>^parent</code> beside it and the start of the comment underneath — no more guessing between five <code>microsoft…</code> entries." },
@@ -344,12 +350,20 @@
       // is split across several fenced code blocks): pull out the code-block contents and
       // import only those, in order. With no code fence, treat the text as raw commands
       // (unchanged behaviour). Language tag after the opening ``` is ignored.
+      // CRLF is normalized to LF first — the engine's script grammar only accepts \r
+      // BEFORE a command, so a Windows-style paste would otherwise reject wholesale.
+      // An UNTERMINATED final fence still counts as a block: a truncated page must
+      // lose nothing (the engine rejects any garbage this lets through anyway).
       function extractScript(txt) {
+        txt = txt.replace(/\r\n?/g, "\n");
         const blocks = [];
-        const re = /```[^\n]*\r?\n([\s\S]*?)```/g;
-        let m;
-        while ((m = re.exec(txt)) !== null) blocks.push(m[1]);
-        return blocks.length ? blocks.join("\n") : txt;
+        const re = /```[^\n]*\n([\s\S]*?)```/g;
+        let m, tailFrom = 0;
+        while ((m = re.exec(txt)) !== null) { blocks.push(m[1]); tailFrom = re.lastIndex; }
+        if (!blocks.length) return txt;
+        const dangling = txt.slice(tailFrom).match(/```[^\n]*\n([\s\S]*)$/);
+        if (dangling && dangling[1].trim()) blocks.push(dangling[1]);
+        return blocks.join("\n");
       }
 
       // Redact the secret a `pass <name> <pw>` / `set <name> <value>` long form carries,
@@ -1107,16 +1121,45 @@
           vv.addEventListener("scroll", syncShell);
         }
 
-        $("#importBtn").onclick = () => $("#importModal").classList.add("show");
-        $("#importCancel").onclick = () => $("#importModal").classList.remove("show");
+        // The import must never LOOK successful when it wasn't: the engine's script
+        // parse is atomic (one bad line → nothing imported), so surface its errors
+        // in the modal and keep it open; close-with-toast only on a clean run. The
+        // entry count comes from the engine (hel_names("") lists the whole catalog),
+        // so "catalog now N" is a fact, not an assumption about the paste.
+        const catalogSize = () => hel_names("").split("\n").filter(Boolean).length;
+        const importStatus = (msg) => {
+          const s = $("#importStatus");
+          s.textContent = msg;
+          s.hidden = !msg;
+        };
+        $("#importBtn").onclick = () => { importStatus(""); $("#importModal").classList.add("show"); };
+        $("#importCancel").onclick = () => { importStatus(""); $("#importModal").classList.remove("show"); };
         $("#importDo").onclick = () => {
           const txt = extractScript($("#importText").value); // markdown → code blocks, else raw
-          if (txt.trim()) {
-            hel_load_script(txt);
-            persist();
-            toast("Imported");
-            appendLine('<span class="muted"># imported catalog</span>');
+          if (!txt.trim()) {
+            $("#importModal").classList.remove("show");
+            $("#importText").value = "";
+            return;
           }
+          const before = catalogSize();
+          const out = hel_load_script(txt) || "";
+          persist();
+          const after = catalogSize();
+          const errs = out.split("\n").filter((l) => /^(warning|error):/.test(l));
+          const delta = after - before;
+          const summary = "catalog now " + after + " entr" + (after === 1 ? "y" : "ies") +
+            (delta ? " (" + (delta > 0 ? "+" : "") + delta + ")" : "");
+          for (const l of errs) appendLine(esc(l), "err");
+          if (errs.length) {
+            // stay open: show what went wrong, and be explicit when NOTHING landed
+            const head = after === before && /^error: error at /.test(errs[0])
+              ? "Nothing imported — the paste has an unparseable line. "
+              : "Imported with problems — " + summary + ". ";
+            importStatus(head + errs.slice(0, 3).join("\n") + (errs.length > 3 ? "\n(+" + (errs.length - 3) + " more — see console)" : ""));
+            return;
+          }
+          toast("Imported — " + summary);
+          appendLine('<span class="muted"># imported catalog — ' + esc(summary) + "</span>");
           $("#importModal").classList.remove("show");
           $("#importText").value = "";
         };

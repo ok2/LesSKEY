@@ -389,6 +389,15 @@ input.mask.revealed { -webkit-text-security: none; }
 }
 .modal textarea:focus { border-color: var(--ocean); }
 .modal .row { display: flex; gap: 10px; margin-top: 14px; }
+/* Import problem report: red, monospace, keeps the engine's error lines readable. */
+.modal-status {
+  font-family: var(--mono); font-size: 12px; color: var(--seal);
+  border: 1px solid rgba(226, 59, 46, 0.35); border-radius: 8px;
+  background: rgba(226, 59, 46, 0.06);
+  padding: 8px 10px; margin-bottom: 10px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.modal-status[hidden] { display: none; }
 
 /* padding-block only: keep .wrap's inline gutter so the footer lines up with the
    body cards instead of running to the window edge. */

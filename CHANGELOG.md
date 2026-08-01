@@ -8,6 +8,25 @@ release stamp.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-01 — An honest importer
+
+### Fixed
+
+- **Import failures are now visible.** The engine's script import is atomic
+  (one unparseable line rejects the whole paste — the catalog is never
+  half-replaced), but the web dialog always toasted "Imported". It now shows
+  the engine's error lines in the dialog and stays open — explicitly saying
+  "Nothing imported" on a wholesale parse reject — and a clean import
+  reports the real catalog size ("Imported — catalog now N entries (+M)"),
+  echoed to the console too.
+- **CRLF pastes import.** The script grammar accepts `\r` only before a
+  command, not before the `\n` separator, so a Windows-line-ending paste was
+  rejected wholesale (and, before the fix above, silently). `extractScript`
+  now normalizes `\r\n`/`\r` to `\n` first.
+- **Unterminated final markdown fence keeps its lines.** A truncated page
+  copy whose last code fence never closes silently dropped that block; the
+  dangling block now counts as fence content and is imported.
+
 ## [1.3.0] - 2026-07-29 — Find anything, see everything
 
 ### Added
