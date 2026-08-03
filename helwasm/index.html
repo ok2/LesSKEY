@@ -199,7 +199,7 @@
     <div class="modal-bg" id="importModal">
       <div class="modal">
         <h3>Import catalog</h3>
-        <p class="hint">Paste your catalog — raw <code>add …</code> lines, or a whole markdown page (a Notion <code>dump</code> split across code blocks works as-is; only the code blocks are read). Existing entries with the same name are replaced.</p>
+        <p class="hint">Paste your catalog — raw <code>add …</code> lines, or a whole markdown page (a Notion <code>dump</code> split across code blocks works as-is; only the code blocks are read). Existing entries are kept: an identical line is skipped silently, a differing one is shown (<code>&lt;</code> stored / <code>&gt;</code> pasted) and not applied — remove the entry first to take the pasted version.</p>
         <div class="modal-status" id="importStatus" hidden></div>
         <textarea id="importText" placeholder="add ..."></textarea>
         <div class="row">
@@ -263,6 +263,10 @@
       // is { tag: "New" | "Improved", text }; `text` may hold inline <code> for command
       // names (authored/trusted content, rendered as HTML). `title` = the release theme.
       const CHANGELOG = [
+        { version: "1.3.2", date: "2026-08-03", title: "Careful merges", changes: [
+          { tag: "Improved", text: "Importing an entry that already exists never overwrites it — and no longer barks “already exist” without detail. An identical line is skipped silently; a differing line shows as a small diff, <code>&lt;</code> what you have (kept) / <code>&gt;</code> what was pasted (ignored), in the dialog and the console. To take the pasted version, remove the entry first." },
+          { tag: "New", text: "Command-line tool: <code>source -m &lt;file or cmd|&gt;</code> additionally lists catalog names the source does not mention (<code>- name</code> per line) — see at a glance what your Notion page is missing." },
+        ] },
         { version: "1.3.1", date: "2026-08-01", title: "An honest importer", changes: [
           { tag: "Fixed", text: "Import no longer claims success when nothing happened. The engine imports all-or-nothing (one broken line rejects the whole paste — your catalog is never half-replaced), but the dialog used to say “Imported” either way. It now reports the problem, shows the offending errors, and stays open; a clean import confirms with the real entry count." },
           { tag: "Fixed", text: "A paste with Windows line endings (CR&nbsp;LF) imported nothing; it now imports normally." },
@@ -1146,16 +1150,27 @@
           persist();
           const after = catalogSize();
           const errs = out.split("\n").filter((l) => /^(warning|error):/.test(l));
+          // `< stored` / `> incoming` pairs: an existing entry whose imported line
+          // differs — the stored one was KEPT, the import ignored. Merge, not error.
+          const conflicts = out.split("\n").filter((l) => /^[<>] /.test(l));
           const delta = after - before;
           const summary = "catalog now " + after + " entr" + (after === 1 ? "y" : "ies") +
             (delta ? " (" + (delta > 0 ? "+" : "") + delta + ")" : "");
           for (const l of errs) appendLine(esc(l), "err");
+          for (const l of conflicts) appendLine(esc(l));
           if (errs.length) {
             // stay open: show what went wrong, and be explicit when NOTHING landed
             const head = after === before && /^error: error at /.test(errs[0])
               ? "Nothing imported — the paste has an unparseable line. "
               : "Imported with problems — " + summary + ". ";
             importStatus(head + errs.slice(0, 3).join("\n") + (errs.length > 3 ? "\n(+" + (errs.length - 3) + " more — see console)" : ""));
+            return;
+          }
+          if (conflicts.length) {
+            const k = conflicts.length / 2;
+            importStatus("Imported — " + summary + ". " + k + " entr" + (k === 1 ? "y" : "ies") +
+              " differ" + (k === 1 ? "s" : "") + " from your catalog — kept yours (< stored, > pasted):\n" +
+              conflicts.slice(0, 6).join("\n") + (conflicts.length > 6 ? "\n(+" + (conflicts.length - 6) / 2 + " more — see console)" : ""));
             return;
           }
           toast("Imported — " + summary);

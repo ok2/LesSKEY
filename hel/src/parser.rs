@@ -98,7 +98,9 @@ peg::parser! {
         rule save_cmd() -> Command<'input> = "save" _ s:$(([' '..='~'])+) { Command::Dump(Some(s.to_string())) }
         rule save_def_cmd() -> Command<'input> = "save" { Command::Dump(None) }
         rule dump_cmd() -> Command<'input> = "dump" { Command::Dump(Some("-".to_string())) }
-        rule source_cmd() -> Command<'input> = "source" _ s:$(([' '..='~'])+) { Command::Source(s.to_string()) }
+        // `-m` before the path/command: after the merge, also list catalog names
+        // MISSING from the source (`- name` per line) — an optional reverse diff.
+        rule source_cmd() -> Command<'input> = "source" _ m:("-m" _)? s:$(([' '..='~'])+) { Command::Source(m.is_some(), s.to_string()) }
         rule set_cmd() -> Command<'input> = "set" _ k:word() _ v:$(([' '..='~'])+) { Command::Set(k, v.to_string()) }
         rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
         rule ld_cmd() -> Command<'input> = "ld" f:comment()? { Command::Ld(f.unwrap_or(".".to_string())) }

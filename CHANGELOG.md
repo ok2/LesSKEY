@@ -8,6 +8,32 @@ release stamp.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-08-03 — Careful merges
+
+### Changed
+
+- **`add` of an existing name is a visible merge, not a bare error.** The
+  stored entry still always wins (an import never overwrites), but instead
+  of `error: password X already exist` a DIFFERING line now prints a
+  dump-diff-style pair — `< stored (kept)` / `> incoming (ignored)` — while
+  an identical line stays silent, so `source`-ing a dump you already have
+  is quiet and a changed source is precisely visible. Applies everywhere
+  `add` runs: CLI `source <file>` / `source <cmd>|`, web import, console.
+  Take the incoming version deliberately via `rm` + re-add. Core:
+  `cmd_add` in `hel/src/commands.rs`.
+- Web import dialog understands the new pairs: a clean import with
+  conflicts reports "N entries differ from your catalog — kept yours" with
+  the first pairs inline (console holds the rest), and its hint no longer
+  claims same-name entries are replaced (they never were).
+
+### Added
+
+- **`source -m <file-or-cmd|>`** (CLI + console): after the merge, list
+  catalog names the source does NOT mention, one `- name` per line — a
+  reverse diff to spot entries missing from e.g. the Notion page. Optional;
+  plain `source` behaves as before. Parser: `source_cmd`; core:
+  `cmd_source(missing, …)`.
+
 ## [1.3.1] - 2026-08-01 — An honest importer
 
 ### Fixed

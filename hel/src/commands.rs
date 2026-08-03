@@ -8,7 +8,7 @@ use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{is_plus_root, Name, Password, PasswordRef};
 use crate::repl::LKEval;
-use crate::structs::{config_flag, config_get, config_set, LKOut, Mode, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::structs::{config_flag, config_get, config_set, Command, LKOut, Mode, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::totp;
 use crate::utils::editor::password;
 // call_cmd_with_input / get_cmd_args_from_command are only used by the native
@@ -462,8 +462,17 @@ impl<'a> LKEval<'a> {
         {
             let pwname = &name.lock().borrow().name.to_string();
             if let Some(oldname) = state.db.get(pwname) {
-                if name.lock().borrow().to_string() != oldname.lock().borrow().to_string() {
-                    out.e(format!("error: password {} already exist", pwname));
+                // The stored entry always wins; an `add` never overwrites. An
+                // exact re-import (same canonical line) is silently ignored, so
+                // `source`-ing a dump you already have stays quiet. A DIFFERING
+                // line is surfaced as a dump-diff-style pair — `<` stored/kept,
+                // `>` incoming/ignored — so a merge shows exactly what changed;
+                // apply it deliberately via `rm` + re-add.
+                let old = oldname.lock().borrow().to_string();
+                let new = name.lock().borrow().to_string();
+                if new != old {
+                    out.o(format!("< {}", old.trim()));
+                    out.o(format!("> {}", new.trim()));
                 }
             } else {
                 state.db.insert(pwname.to_string(), name.clone());
@@ -849,7 +858,7 @@ impl<'a> LKEval<'a> {
         };
     }
 
-    pub fn cmd_source(&self, out: &LKOut, source: &String) -> bool {
+    pub fn cmd_source(&self, out: &LKOut, missing: bool, source: &String) -> bool {
         out.o(format!("source {}", source));
         let script: String;
         if source.trim().ends_with("|") {
@@ -889,11 +898,34 @@ impl<'a> LKEval<'a> {
         }
         match command_parser::script(&script) {
             Ok(cmd_list) => {
+                // For `-m`: remember which names the source ADDS before the list
+                // is consumed, so catalog-only names can be reported afterwards.
+                let sourced: HashSet<String> = if missing {
+                    cmd_list
+                        .iter()
+                        .filter_map(|c| match c {
+                            Command::Add(p) => Some(p.lock().borrow().name.to_string()),
+                            _ => None,
+                        })
+                        .collect()
+                } else {
+                    Default::default()
+                };
                 for cmd in cmd_list {
                     let print = LKEval::new(self.rl.clone(), cmd, self.state.clone(), password).eval();
                     print.out.copy(&out);
                     if print.quit {
                         return true;
+                    }
+                }
+                if missing {
+                    // Reverse diff: names in the catalog the source never mentioned
+                    // (`- name` per line) — nothing is removed, this is a report.
+                    let mut only_local: Vec<String> =
+                        self.state.lock().borrow().db.keys().filter(|k| !sourced.contains(*k)).cloned().collect();
+                    only_local.sort();
+                    for name in only_local {
+                        out.o(format!("- {}", name));
                     }
                 }
             }

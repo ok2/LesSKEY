@@ -166,8 +166,8 @@ impl<'a> LKEval<'a> {
             Command::Gen(num, name) => self.cmd_gen(&out, &num, &name),
             Command::Rnd(num, name) => self.cmd_rnd(&out, &num, &name),
             Command::PasteBuffer(command) => self.cmd_pb(&out, command),
-            Command::Source(script) => {
-                quit = self.cmd_source(&out, script);
+            Command::Source(missing, script) => {
+                quit = self.cmd_source(&out, *missing, script);
             }
             Command::Dump(script) => self.cmd_dump(&out, script),
             Command::Set(key, value) => { to_history = false; self.cmd_set(&out, key, value); }
@@ -857,7 +857,7 @@ mod tests {
         // diff alongside other edits (the baseline only moves on load/save).
         let src = std::env::temp_dir().join(format!("hel_save_diff_src_{}", std::process::id()));
         std::fs::write(&src, "add t3\n").unwrap();
-        LKEval::news(Command::Source(src.to_str().unwrap().to_string()), lk.clone()).eval();
+        LKEval::news(Command::Source(false, src.to_str().unwrap().to_string()), lk.clone()).eval();
         LKEval::news(command_parser::cmd("rm t2").unwrap(), lk.clone()).eval();
         let pr = LKEval::news(Command::Dump(Some(target.clone())), lk.clone()).eval();
         let out = pr.out.out.as_ref().unwrap().lock().clone();

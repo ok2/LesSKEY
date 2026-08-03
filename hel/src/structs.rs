@@ -112,7 +112,7 @@ pub enum Command<'a> {
     Correct(Name),
     Uncorrect(Name),
     PasteBuffer(String),
-    Source(String),
+    Source(bool, String), // (list names missing from the source?, path/command)
     Dump(Option<String>),
     Set(String, String),
     Comment(Name, Comment),
@@ -141,7 +141,7 @@ impl<'a> PartialEq for Command<'a> {
             (Command::Correct(s), Command::Correct(o)) => s == o,
             (Command::Uncorrect(s), Command::Uncorrect(o)) => s == o,
             (Command::PasteBuffer(s), Command::PasteBuffer(o)) => s == o,
-            (Command::Source(s), Command::Source(o)) => s == o,
+            (Command::Source(m, s), Command::Source(n, o)) => m == n && s == o,
             (Command::Dump(s), Command::Dump(o)) => s == o,
             (Command::Set(a, b), Command::Set(x, y)) => a == x && b == y,
             (Command::Comment(a, b), Command::Comment(x, y)) => a == x && b == y,
@@ -177,7 +177,8 @@ impl<'a> std::fmt::Display for Command<'a> {
             Command::Correct(s) => write!(f, "correct {}", s),
             Command::Uncorrect(s) => write!(f, "uncorrect {}", s),
             Command::PasteBuffer(s) => write!(f, "pb {}", s),
-            Command::Source(s) => write!(f, "source {}", s),
+            Command::Source(false, s) => write!(f, "source {}", s),
+            Command::Source(true, s) => write!(f, "source -m {}", s),
             Command::Dump(None) => write!(f, "dump"),
             Command::Dump(Some(s)) => write!(f, "dump {}", s),
             // Value redacted: a `set` may carry a secret (e.g. hel_notion_token)
