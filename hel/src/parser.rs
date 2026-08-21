@@ -1,7 +1,7 @@
 extern crate peg;
 
 use crate::password::Password;
-use crate::structs::{Command, LKErr, Mode};
+use crate::structs::{Command, LKErr, LsScope, Mode};
 use crate::utils::date::Date;
 
 peg::parser! {
@@ -102,8 +102,24 @@ peg::parser! {
         // MISSING from the source (`- name` per line) — an optional reverse diff.
         rule source_cmd() -> Command<'input> = "source" _ m:("-m" _)? s:$(([' '..='~'])+) { Command::Source(m.is_some(), s.to_string()) }
         rule set_cmd() -> Command<'input> = "set" _ k:word() _ v:$(([' '..='~'])+) { Command::Set(k, v.to_string()) }
-        rule ls_cmd() -> Command<'input> = "ls" f:comment()? { Command::Ls(f.unwrap_or(".".to_string())) }
-        rule ld_cmd() -> Command<'input> = "ld" f:comment()? { Command::Ld(f.unwrap_or(".".to_string())) }
+        // `-n`/`-c`/`-l`/`-a` pick the haystack (see LsScope). The flag only
+        // counts when a pattern follows it, so a bare `ls -n` still searches
+        // for the literal `-n` via the second alternative.
+        rule ls_scope() -> LsScope = "-" f:$(['n' | 'c' | 'l' | 'a']) {?
+            match f {
+                "n" => Ok(LsScope::Name),
+                "c" => Ok(LsScope::Comment),
+                "l" => Ok(LsScope::Line),
+                "a" => Ok(LsScope::Any),
+                _ => Err("unknown ls scope"),
+            }
+        }
+        rule ls_args() -> (LsScope, String) =
+              _ s:ls_scope() f:comment() { (s, f) }
+            / f:comment() { (LsScope::Line, f) }
+            / "" { (LsScope::Line, ".".to_string()) }
+        rule ls_cmd() -> Command<'input> = "ls" a:ls_args() { Command::Ls(a.0, a.1) }
+        rule ld_cmd() -> Command<'input> = "ld" a:ls_args() { Command::Ld(a.0, a.1) }
         rule add_cmd() -> Command<'input> = "add" _ name:name() { Command::Add(Password::from_password(name)) }
         rule keep_cmd() -> Command<'input> = "keep" _ name:word() { Command::Keep(name.to_string()) }
         rule gen_cmd() -> Command<'input> = "gen" n:num()? _ name:name() {
@@ -378,6 +394,29 @@ add t3 C 99 2022-12-14
                 assert_eq!(p.lock().borrow().length, Some(20));
             }
             other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_ls_scope_test() {
+        // no flag -> whole descriptor line, `.` when no pattern either
+        assert_eq!(command_parser::cmd("ls"), Ok(Command::Ls(LsScope::Line, ".".to_string())));
+        assert_eq!(command_parser::cmd("ls ^ssh"), Ok(Command::Ls(LsScope::Line, "^ssh".to_string())));
+        assert_eq!(command_parser::cmd("ld"), Ok(Command::Ld(LsScope::Line, ".".to_string())));
+        // flags select the haystack, for both ls and ld
+        assert_eq!(command_parser::cmd("ls -n ^ssh"), Ok(Command::Ls(LsScope::Name, "^ssh".to_string())));
+        assert_eq!(command_parser::cmd("ls -c ^ok@"), Ok(Command::Ls(LsScope::Comment, "^ok@".to_string())));
+        assert_eq!(command_parser::cmd("ls -l ^ssh"), Ok(Command::Ls(LsScope::Line, "^ssh".to_string())));
+        assert_eq!(command_parser::cmd("ls -a ^ssh"), Ok(Command::Ls(LsScope::Any, "^ssh".to_string())));
+        assert_eq!(command_parser::cmd("ld -n ^ssh"), Ok(Command::Ld(LsScope::Name, "^ssh".to_string())));
+        // a flag without a pattern is the pattern; so is an unknown or glued one
+        assert_eq!(command_parser::cmd("ls -n"), Ok(Command::Ls(LsScope::Line, "-n".to_string())));
+        assert_eq!(command_parser::cmd("ls -x foo"), Ok(Command::Ls(LsScope::Line, "-x foo".to_string())));
+        assert_eq!(command_parser::cmd("ls -nfoo"), Ok(Command::Ls(LsScope::Line, "-nfoo".to_string())));
+        assert_eq!(command_parser::cmd("ls -99"), Ok(Command::Ls(LsScope::Line, "-99".to_string())));
+        // Display round-trips back through the parser (it feeds the history)
+        for cmd in ["ls .", "ls -n ^ssh", "ls -c ^ok@", "ld -a x", "ls -99"] {
+            assert_eq!(command_parser::cmd(cmd).unwrap().to_string(), cmd);
         }
     }
 

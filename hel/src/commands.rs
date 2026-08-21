@@ -8,7 +8,7 @@ use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{is_plus_root, Name, Password, PasswordRef};
 use crate::repl::LKEval;
-use crate::structs::{config_flag, config_get, config_set, Command, LKOut, Mode, Radix, CORRECT_FILE, DUMP_FILE};
+use crate::structs::{config_flag, config_get, config_set, Command, LKOut, LsScope, Mode, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::totp;
 use crate::utils::editor::password;
 // call_cmd_with_input / get_cmd_args_from_command are only used by the native
@@ -39,8 +39,8 @@ stored. Default form is six short, memorable words (xkcd 936).
 
 ENTRIES
   add <descriptor>       define an entry            (help add / help name)
-  ls [regex]             list entries by name
-  ld [regex]             list entries by date (oldest first)
+  ls [-ncla] [regex]     list entries by name
+  ld [-ncla] [regex]     list entries by date (oldest first)
   keep <id>              save list row <id> (left column of ls/gen) to catalog
   mv <name> <folder>     move entry under <folder>  (folder `/` = top level)
   comment <name> [text]  set or clear the comment
@@ -140,13 +140,24 @@ entry + master:
   15 words / 40 hex / 27 base64 digits instead of 6 / 16 / 11.";
 
 const HELP_LS: &str = "\
-ls [regex]   list catalog entries sorted by name.
-ld [regex]   list catalog entries sorted by date, oldest first (newest last).
+ls [-ncla] [regex]   list catalog entries sorted by name.
+ld [-ncla] [regex]   list catalog entries sorted by date, oldest first.
 
-The regex (default `.`) matches case-insensitively against the name, the full
-descriptor, and the comment. Each row gets an id (left column) reusable as a
-<name> in enc/keep/mv/etc. until the next listing. Under `pb`/`enc` the listing
-collapses to bare names (newest last for `ld`) — see `help pb`, `help enc`.";
+The regex (default `.`) matches case-insensitively; an inline (?-i) still wins.
+The optional flag picks what it matches against:
+
+  (none), -l   the whole descriptor line: prefix, name, length/mode, seq, date,
+               comment and ^parent — so `^` anchors at the name, `$` at the end
+               of the line, e.g. `ls ^ssh` = names starting with ssh.
+  -n           the bare name only:      ls -n ^microsoft.*t$
+  -c           the bare comment only:   ls -c ^ok@
+  -a           any of the three, each anchored on its own — `^re` then hits a
+               name start OR a comment start.
+
+The flag counts only when a pattern follows it, so a bare `ls -n` searches for
+the literal `-n`. Each row gets an id (left column) reusable as a <name> in
+enc/keep/mv/etc. until the next listing. Under `pb`/`enc` the listing collapses
+to bare names (newest last for `ld`) — see `help pb`, `help enc`.";
 
 const HELP_ENC: &str = "\
 enc <name|id>       show an entry's generated password (to stdout).
@@ -1044,7 +1055,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn cmd_ls<F>(&self, out: &LKOut, filter: String, sort_by: F)
+    pub fn cmd_ls<F>(&self, out: &LKOut, scope: LsScope, filter: String, sort_by: F)
     where
         F: Fn(&PasswordRef, &PasswordRef) -> std::cmp::Ordering,
     {
@@ -1058,13 +1069,22 @@ impl<'a> LKEval<'a> {
         };
         let mut tmp: Vec<PasswordRef> = vec![];
         for (_, name) in &self.state.lock().borrow().db {
-            if re.find(&name.lock().borrow().to_string()).is_some() {
-                tmp.push(name.clone());
-            } else if re.find(&name.lock().borrow().name).is_some() {
-                tmp.push(name.clone());
-            } else if name.lock().borrow().comment.is_some()
-                && re.find(&name.lock().borrow().comment.as_ref().unwrap()).is_some()
-            {
+            let hit = {
+                let pwd = name.lock();
+                let pwd = pwd.borrow();
+                // The descriptor is left-padded to a fixed prefix column, so it
+                // has to be trimmed or `^` could never anchor at the name.
+                let line = || re.is_match(pwd.to_string().trim());
+                let named = || re.is_match(&pwd.name);
+                let commented = || pwd.comment.as_ref().is_some_and(|c| re.is_match(c));
+                match scope {
+                    LsScope::Line => line(),
+                    LsScope::Name => named(),
+                    LsScope::Comment => commented(),
+                    LsScope::Any => line() || named() || commented(),
+                }
+            };
+            if hit {
                 tmp.push(name.clone());
             }
         }

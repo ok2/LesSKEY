@@ -120,12 +120,12 @@ impl<'a> LKEval<'a> {
                 out.e("Bye!".to_string());
                 quit = true;
             }
-            Command::Ls(filter) => {
-                self.cmd_ls(&out, filter.to_string(), |a, b| a.lock().borrow().name.cmp(&b.lock().borrow().name))
-            }
-            Command::Ld(filter) => {
-                self.cmd_ls(&out, filter.to_string(), |a, b| a.lock().borrow().date.cmp(&b.lock().borrow().date))
-            }
+            Command::Ls(scope, filter) => self.cmd_ls(&out, *scope, filter.to_string(), |a, b| {
+                a.lock().borrow().name.cmp(&b.lock().borrow().name)
+            }),
+            Command::Ld(scope, filter) => self.cmd_ls(&out, *scope, filter.to_string(), |a, b| {
+                a.lock().borrow().date.cmp(&b.lock().borrow().date)
+            }),
             Command::Add(name) => {
                 self.cmd_add(&out, &name);
                 // Auto-encrypt any #"..."/!"..." the user typed (borrow-safe here:
@@ -234,7 +234,7 @@ mod tests {
     use std::collections::HashSet;
     use crate::lk::LK;
     use crate::password::Password;
-    use crate::structs::Mode;
+    use crate::structs::{LsScope, Mode};
     use crate::utils::date::Date;
     use parking_lot::ReentrantMutex;
     use std::cell::RefCell;
@@ -245,7 +245,7 @@ mod tests {
     fn exec_cmds_basic() {
         let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
         assert_eq!(
-            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKEval::news(Command::Ls(LsScope::Line, ".".to_string()), lk.clone()).eval(),
             LKPrint::new(LKOut::from_vecs(vec![], vec![]), false, lk.clone())
         );
         let pwd1 = Password::from_password(Password {
@@ -277,7 +277,7 @@ mod tests {
             }
         );
         assert_eq!(
-            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKEval::news(Command::Ls(LsScope::Line, ".".to_string()), lk.clone()).eval(),
             LKPrint::new(
                 LKOut::from_vecs(vec!["  1       t1 R 99 2022-12-30 comment".to_string()], vec![]),
                 false,
@@ -316,7 +316,7 @@ mod tests {
             }
         );
         assert_eq!(
-            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKEval::news(Command::Ls(LsScope::Line, ".".to_string()), lk.clone()).eval(),
             LKPrint::new(
                 LKOut::from_vecs(
                     vec![
@@ -334,7 +334,7 @@ mod tests {
             LKPrint::new(LKOut::from_vecs(vec!["removed t2".to_string()], vec![]), false, lk.clone())
         );
         assert_eq!(
-            LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval(),
+            LKEval::news(Command::Ls(LsScope::Line, ".".to_string()), lk.clone()).eval(),
             LKPrint::new(
                 LKOut::from_vecs(vec!["  1       t1 R 99 2022-12-30 comment".to_string()], vec![]),
                 false,
@@ -735,18 +735,61 @@ mod tests {
         LKEval::news(Command::Add(mk("atest", 2024, 5, 6)), lk.clone()).eval();
 
         // Captured ls -> bare names, sorted by name.
-        let pr = LKEval::news(Command::Ls(".".to_string()), lk.clone()).with_capture(true).eval();
+        let pr = LKEval::news(Command::Ls(LsScope::Line, ".".to_string()), lk.clone()).with_capture(true).eval();
         assert_eq!(pr.out, LKOut::from_vecs(vec!["atest".to_string(), "btest".to_string()], vec![]));
 
         // Captured ld -> bare names, sorted by date ascending (newest last).
-        let pr = LKEval::news(Command::Ld(".".to_string()), lk.clone()).with_capture(true).eval();
+        let pr = LKEval::news(Command::Ld(LsScope::Line, ".".to_string()), lk.clone()).with_capture(true).eval();
         assert_eq!(pr.out, LKOut::from_vecs(vec!["btest".to_string(), "atest".to_string()], vec![]));
 
         // Interactive ls keeps the rich rows (key + mode + date), not bare names.
-        let pr = LKEval::news(Command::Ls(".".to_string()), lk.clone()).eval();
+        let pr = LKEval::news(Command::Ls(LsScope::Line, ".".to_string()), lk.clone()).eval();
         let rows = pr.out.out.as_ref().unwrap().lock();
         assert!(rows.iter().any(|l| l.contains("atest R 99 2024-05-06")));
         assert!(rows.iter().all(|l| l.as_str() != "atest" && l.as_str() != "btest"));
+    }
+
+    fn mkc(name: &str, comment: &str) -> crate::password::PasswordRef {
+        let pwd = mk(name, 2022, 1, 2);
+        pwd.lock().borrow_mut().comment = Some(comment.to_string());
+        pwd
+    }
+
+    #[test]
+    fn ls_scope_test() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        for pwd in [
+            mk("sshkeys", 2022, 1, 2),        // name starts with ssh
+            mk("myssh", 2022, 1, 2),          // name contains ssh
+            mkc("gitlab", "ssh access here"), // comment starts with ssh
+            mkc("mail", "ok@example.com"),    // comment starts with ok@
+            mkc("other", "write to ok@x"),    // comment contains ok@
+            mk("microsoft-account", 2022, 1, 2),
+        ] {
+            LKEval::news(Command::Add(pwd), lk.clone()).eval();
+        }
+        let ls = |scope, re: &str| {
+            let pr = LKEval::news(Command::Ls(scope, re.to_string()), lk.clone()).with_capture(true).eval();
+            let rows = pr.out.out.as_ref().unwrap().lock().clone();
+            rows
+        };
+
+        // Default scope is the trimmed descriptor line, so `^` anchors at the
+        // name — neither the mid-name nor the comment-start hit comes along.
+        assert_eq!(ls(LsScope::Line, "^ssh"), vec!["sshkeys".to_string()]);
+        // Unanchored still sees the whole line, comment included.
+        assert_eq!(ls(LsScope::Line, "ssh"), vec!["gitlab", "myssh", "sshkeys"]);
+        // -n anchors both ends at the name; -c does the same for the comment.
+        assert_eq!(ls(LsScope::Name, "^ssh"), vec!["sshkeys".to_string()]);
+        assert_eq!(ls(LsScope::Name, "^microsoft.*t$"), vec!["microsoft-account".to_string()]);
+        assert_eq!(ls(LsScope::Comment, "^ok@"), vec!["mail".to_string()]);
+        assert_eq!(ls(LsScope::Comment, "ssh"), vec!["gitlab".to_string()]);
+        // -a is the union: a name start OR a comment start.
+        assert_eq!(ls(LsScope::Any, "^ssh"), vec!["gitlab", "sshkeys"]);
+        // A pattern that does not compile is reported, not silently ignored.
+        let pr = LKEval::news(Command::Ls(LsScope::Line, "^(".to_string()), lk.clone()).eval();
+        assert_eq!(pr.out.out.as_ref().unwrap().lock().len(), 0);
+        assert!(pr.out.err.as_ref().unwrap().lock()[0].contains("failed to parse re"));
     }
 
     #[test]

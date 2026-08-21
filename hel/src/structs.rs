@@ -95,12 +95,42 @@ pub enum LKErr<'a> {
     ParseError(peg::error::ParseError<peg::str::LineCol>),
 }
 
+/// Which text of an entry `ls`/`ld` matches its pattern against. Selected by
+/// the optional flag in front of the pattern (`ls -n ^foo`); the default is
+/// `Line`, so `^` anchors at the entry name and `$` at the end of `^parent`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LsScope {
+    /// The whole canonical descriptor line, trimmed: prefix, name, length,
+    /// mode, seq, date, comment and `^parent`. Default.
+    Line,
+    /// The bare entry name.
+    Name,
+    /// The bare comment; entries without one never match.
+    Comment,
+    /// Line, name and comment, each anchored on its own (the pre-flag
+    /// behaviour: `^re` hits a name start OR a comment start).
+    Any,
+}
+
+impl LsScope {
+    /// The flag that selects this scope, with its leading space; `""` for the
+    /// default, so `Command`'s `Display` round-trips back through the parser.
+    pub fn flag(&self) -> &'static str {
+        match self {
+            LsScope::Line => "",
+            LsScope::Name => " -n",
+            LsScope::Comment => " -c",
+            LsScope::Any => " -a",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Command<'a> {
     Add(PasswordRef),
     Keep(Name),
-    Ls(String),
-    Ld(String),
+    Ls(LsScope, String),
+    Ld(LsScope, String),
     Mv(Name, Name),
     Rm(Name),
     Enc(Name),
@@ -128,8 +158,8 @@ impl<'a> PartialEq for Command<'a> {
         match (self, other) {
             (Command::Add(s), Command::Add(o)) => *s.lock() == *o.lock(),
             (Command::Keep(s), Command::Keep(o)) => s == o,
-            (Command::Ls(s), Command::Ls(o)) => s == o,
-            (Command::Ld(s), Command::Ld(o)) => s == o,
+            (Command::Ls(f, s), Command::Ls(g, o)) => f == g && s == o,
+            (Command::Ld(f, s), Command::Ld(g, o)) => f == g && s == o,
             (Command::Mv(a, b), Command::Mv(x, y)) => a == x && b == y,
             (Command::Rm(s), Command::Rm(o)) => s == o,
             (Command::Enc(s), Command::Enc(o)) => s == o,
@@ -160,8 +190,8 @@ impl<'a> std::fmt::Display for Command<'a> {
         match self {
             Command::Add(s) => write!(f, "add {}", s.lock().borrow().to_string().trim()),
             Command::Keep(s) => write!(f, "keep {}", s),
-            Command::Ls(s) => write!(f, "ls {}", s),
-            Command::Ld(s) => write!(f, "ld {}", s),
+            Command::Ls(sc, s) => write!(f, "ls{} {}", sc.flag(), s),
+            Command::Ld(sc, s) => write!(f, "ld{} {}", sc.flag(), s),
             Command::Mv(a, b) => write!(f, "mv {} {}", a, b),
             Command::Rm(s) => write!(f, "rm {}", s),
             Command::Enc(s) => write!(f, "enc {}", s),

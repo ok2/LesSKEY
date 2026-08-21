@@ -8,6 +8,32 @@ release stamp.
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-08-20 — Anchors that hold
+
+### Fixed
+
+- **`^` in `ls`/`ld` anchors where you expect it.** The pattern used to be
+  tried against three haystacks per entry (descriptor line, bare name, bare
+  comment) and any hit listed the entry, so `ls ^ssh` also matched entries
+  whose COMMENT starts with `ssh`. Worse, the descriptor haystack is
+  left-padded to a fixed prefix column, so `^` could never match there at
+  all. The default scope is now the trimmed descriptor line only: `^`
+  anchors at the name, `$` at the end of `^parent`. On a 1230-entry catalog
+  `ls ^ssh` drops from 5 hits (2 real, 3 comment-start) to 2. Unanchored
+  patterns are unchanged. Core: `cmd_ls` in `hel/src/commands.rs`.
+
+### Added
+
+- **Scope flags for `ls`/`ld`** — `ls [-n|-c|-l|-a] [regex]`:
+  - none / `-l` — the whole trimmed descriptor line (default, as above)
+  - `-n` — the bare name: `ls -n ^microsoft.*t$`
+  - `-c` — the bare comment: `ls -c ^ok@`
+  - `-a` — any of the three, each anchored on its own (the old behaviour)
+
+  A flag counts only when a pattern follows it, so a bare `ls -n` still
+  searches for the literal `-n`. Parser: `ls_scope`/`ls_args`; core:
+  `LsScope` in `hel/src/structs.rs`.
+
 ## [1.3.2] - 2026-08-03 — Careful merges
 
 ### Changed
