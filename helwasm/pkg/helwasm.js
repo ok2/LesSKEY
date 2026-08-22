@@ -68,6 +68,21 @@ export function hel_entry(name) {
 }
 
 /**
+ * True if a master/parent password is currently cached for `name` (what the
+ * `pass` command stores, and what `unpass` drops). Presence only — the secret
+ * itself never crosses the boundary. The page uses it to show whether a master
+ * is held without keeping a copy of its own.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function hel_has_secret(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.hel_has_secret(ptr0, len0);
+    return ret !== 0;
+}
+
+/**
  * Call once at page load: routes Rust panics to the browser console with a
  * readable message + stack instead of an opaque "unreachable" trap.
  */

@@ -61,6 +61,17 @@ pub fn hel_entry(name: String) -> String {
     }
 }
 
+/// True if a master/parent password is currently cached for `name` (what the
+/// `pass` command stores, and what `unpass` drops). Presence only — the secret
+/// itself never crosses the boundary. The page uses it to show whether a master
+/// is held without keeping a copy of its own.
+#[wasm_bindgen]
+pub fn hel_has_secret(name: String) -> bool {
+    let cell = STATE.lock();
+    let lk = cell.borrow();
+    lk.secrets.contains_key(&name)
+}
+
 /// Return catalog entries matching `pattern`, one canonical stored line per
 /// line (`name [len]mode seq date comment ^parent` — the dump/export form),
 /// sorted — the completion set for a typed name. The pattern is a regular

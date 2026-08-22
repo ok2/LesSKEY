@@ -715,6 +715,25 @@ mod tests {
         assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "other pw");
     }
 
+    #[test]
+    fn exec_cmd_enc_root() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // A root has no catalog entry: `enc /` (and `enc +bohr`) must hand back the
+        // password `pass` cached for it, not report "name / not found".
+        LKEval::news(Command::Pass("/".to_string(), Some("root master".to_string())), lk.clone()).eval();
+        LKEval::news(Command::Pass("+bohr".to_string(), Some("bohr master".to_string())), lk.clone()).eval();
+        let pr = LKEval::news(Command::Enc("/".to_string()), lk.clone()).eval();
+        assert_eq!(pr.out.data(), "root master");
+        let pr = LKEval::news(Command::Enc("+bohr".to_string()), lk.clone()).eval();
+        assert_eq!(pr.out.data(), "bohr master");
+        // an uncached root explains itself instead of failing as a missing name
+        let pr = LKEval::news(Command::Enc("+none".to_string()), lk.clone()).eval();
+        assert!(pr.out.err.as_ref().unwrap().lock().join("").contains("is a root: its password is entered"));
+        // bare `enc` is a usage line, not a parse error
+        let pr = LKEval::news(Command::Enc("".to_string()), lk.clone()).eval();
+        assert!(pr.out.err.as_ref().unwrap().lock().join("").contains("enc needs a name"));
+    }
+
     fn mk(name: &str, y: i32, m: u32, d: u32) -> crate::password::PasswordRef {
         Password::from_password(Password {
             name: name.to_string(),

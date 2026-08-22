@@ -587,9 +587,19 @@ impl<'a> LKEval<'a> {
     }
 
     pub fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, String)> {
-        let root_folder = "/".to_string();
-        let (name, pass, pwd_opt) = if name == "/" && self.state.lock().borrow().secrets.contains_key(&root_folder) {
-            (root_folder.to_string(), self.state.lock().borrow().secrets.get(&root_folder).unwrap().to_string(), None)
+        // `/` and a `+` name are ROOTS: their password is entered, never derived, and
+        // they need no catalog entry at all. When there is none, the cached `pass`
+        // value IS the answer — hand it back instead of hunting for an entry.
+        let bare_root = (name == "/" || is_plus_root(name)) && self.get_password(name).is_none();
+        if bare_root && !self.state.lock().borrow().secrets.contains_key(name) {
+            out.e(format!(
+                "error: {} is a root: its password is entered, not derived — set it with `pass {}`",
+                name, name
+            ));
+            return None;
+        }
+        let (name, pass, pwd_opt) = if bare_root {
+            (name.to_string(), self.state.lock().borrow().secrets.get(name).unwrap().to_string(), None)
         } else {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
@@ -767,7 +777,18 @@ impl<'a> LKEval<'a> {
     /// Any command is accepted as a producer (parity with `pb`); a producer that
     /// emits something that is not an entry name simply fails to resolve.
     pub fn cmd_enc_arg(&self, out: &LKOut, arg: &String) {
+        if arg.trim().is_empty() {
+            out.e("error: enc needs a name, a list id, or a command whose output names one (see `help enc`)".to_string());
+            return;
+        }
         if self.get_password(arg).is_some() {
+            self.cmd_enc(out, arg);
+            return;
+        }
+        // A root (`/`, `+name`) may have no catalog entry — `cmd_enc` returns its
+        // cached password. Route it there; running it as a sub-command is what made
+        // `enc /` report "name / not found".
+        if arg == "/" || is_plus_root(arg) {
             self.cmd_enc(out, arg);
             return;
         }

@@ -24,6 +24,14 @@ export function hel_command(cmd: string): string;
 export function hel_entry(name: string): string;
 
 /**
+ * True if a master/parent password is currently cached for `name` (what the
+ * `pass` command stores, and what `unpass` drops). Presence only — the secret
+ * itself never crosses the boundary. The page uses it to show whether a master
+ * is held without keeping a copy of its own.
+ */
+export function hel_has_secret(name: string): boolean;
+
+/**
  * Call once at page load: routes Rust panics to the browser console with a
  * readable message + stack instead of an opaque "unreachable" trap.
  */
@@ -74,6 +82,7 @@ export interface InitOutput {
     readonly hel_chain: (a: number, b: number) => [number, number];
     readonly hel_command: (a: number, b: number) => [number, number];
     readonly hel_entry: (a: number, b: number) => [number, number];
+    readonly hel_has_secret: (a: number, b: number) => number;
     readonly hel_load_script: (a: number, b: number) => [number, number];
     readonly hel_names: (a: number, b: number) => [number, number];
     readonly hel_parse: (a: number, b: number) => [number, number];

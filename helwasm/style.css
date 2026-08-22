@@ -180,6 +180,18 @@ main { padding: clamp(20px, 3vw, 34px) 0 56px; display: grid; grid-template-colu
 .suggest .opt:hover, .suggest .opt.active { background: rgba(27, 65, 97, 0.08); }
 .suggest .opt:hover .opt-name, .suggest .opt.active .opt-name { color: var(--ocean); }
 .field label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+/* The master field's label doubles as its state line: the caption on the left,
+   the "cached - forget" control on the right (hidden while nothing is cached). */
+.field label.with-state { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+/* the caption yields first on a narrow phone; the control never wraps */
+.field label.with-state > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lnk {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; white-space: nowrap;
+  color: var(--ocean); background: transparent; border: 0; padding: 0;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.lnk:hover { color: var(--deep); }
+.lnk[hidden] { display: none; }
 input[type="text"], input[type="password"] {
   /* 16px min: iOS Safari auto-zooms (and stays zoomed) when a focused input is
      under 16px. Keep all focusable fields >= 16px to stop that. */

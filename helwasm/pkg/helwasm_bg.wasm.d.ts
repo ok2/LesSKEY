@@ -5,6 +5,7 @@ export const hel_init: () => void;
 export const hel_chain: (a: number, b: number) => [number, number];
 export const hel_command: (a: number, b: number) => [number, number];
 export const hel_entry: (a: number, b: number) => [number, number];
+export const hel_has_secret: (a: number, b: number) => number;
 export const hel_load_script: (a: number, b: number) => [number, number];
 export const hel_names: (a: number, b: number) => [number, number];
 export const hel_parse: (a: number, b: number) => [number, number];

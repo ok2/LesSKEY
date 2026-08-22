@@ -136,7 +136,12 @@
             <div class="suggest" id="qnames" role="listbox" hidden></div>
           </div>
           <div class="field">
-            <label for="master">Master phrase</label>
+            <label class="with-state" for="master">
+              <span>Master phrase</span>
+              <!-- Shown only while hel holds a cached master; clicking it runs `unpass`
+                   and wipes every cleartext copy the page still shows. -->
+              <button type="button" class="lnk" id="forgetMaster" hidden title="Forget the cached master (the console `unpass`)">forget</button>
+            </label>
             <input type="text" id="master" class="mask" placeholder="your master phrase" title="click to show or hide" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" readonly data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other" data-protonpass-ignore="true" data-kpxc-ignore="true" />
           </div>
         </div>
@@ -251,7 +256,7 @@
     </div>
 
     <script type="module">
-      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry, hel_names, hel_chain } from "./pkg/helwasm.js";
+      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry, hel_has_secret, hel_names, hel_chain } from "./pkg/helwasm.js";
 
       const $ = (s) => document.querySelector(s);
       const masterEl = () => document.getElementById("master");
@@ -330,7 +335,10 @@
       }
 
       // ---- host imports (wasm calls these by bare name → must be globals) ----
-      // The master field is the single ROOT master. hel's read_master prompts "/" for
+      // The master field is the single ROOT master, and it is WRITE-ONLY: what is
+      // typed is pushed into the engine at the first commit and the box is emptied
+      // (see applyMaster), so this only ever reads a phrase still being typed.
+      // hel's read_master prompts "/" for
       // the root and the parent's NAME when climbing a ^parent chain; by answering only
       // the "/" prompt (and "" otherwise) we force hel to climb to the root and COMPUTE
       // every intermediate parent from one master — exactly what the CLI does, and the
@@ -351,7 +359,13 @@
       // ---- helpers ----
       const persist = () => hel_command("save " + CATALOG_KEY);
       const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const stripNoise = (out) => out.split("\n").filter((l) => l && !/^(warning|error):/.test(l));
+      // A diagnostic line, never a password: hel's own `warning:` / `error:` / `note:`
+      // prefixes plus the parser's `error at L:C:` form (which has no colon after
+      // "error", so the old prefix test missed it and the console MASKED the parse
+      // error as if it were a secret). Passwords are S/KEY words — no colons — so
+      // matching on the colon can never swallow a real result.
+      const isDiag = (l) => /^(warning|error|note):/.test(l) || /^error at \d+:\d+:/.test(l);
+      const stripNoise = (out) => out.split("\n").filter((l) => l && !isDiag(l));
       const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
       // Import accepts a full markdown paste (e.g. a whole Notion page whose hel `dump`
@@ -639,6 +653,63 @@
           sec.style.fontSize = Math.max(11, Math.floor((base * avail) / full)) + "px";
         }
       }
+      // ---- master field: apply-then-clear ----
+      // The master phrase must not sit in the DOM for the whole session: an input's
+      // value is readable by anything that reaches the page (extension, injected
+      // script, heap snapshot, an OS screenshot of a revealed field), and a filled
+      // box also silently re-seeded the engine right after any `unpass`, which made
+      // forgetting a master impossible from the page. So the field is write-only:
+      // what you type is pushed into hel's in-memory `pass /` cache at the first
+      // commit (Enter, Copy, or leaving the box) and the box is emptied. An empty
+      // box keeps meaning "use the cached master", exactly as before — the label
+      // now says whether one is held, and offers to forget it.
+      function refreshMasterState() {
+        const el = masterEl();
+        if (!el) return;
+        const cached = hel_has_secret("/"); // presence only; the value stays in the engine
+        const b = $("#forgetMaster");
+        if (b) b.hidden = !cached;
+        el.placeholder = cached ? "cached in memory" : "your master phrase";
+      }
+      // Push the typed master into the engine, then clear the box. An empty box is a
+      // no-op: it already means "keep the cached one". `unpass` first, because a newly
+      // typed master is authoritative for the whole chain (the same rule quickGen
+      // applies when the field changes). Nothing is persisted — `pass` is memory-only,
+      // and the correct-hash it refreshes is written by the engine itself.
+      function applyMaster() {
+        const el = masterEl();
+        const v = el.value;
+        if (!v) { refreshMasterState(); return false; }
+        // quickGen already dropped the chain when this value first appeared in the
+        // box; only a value it never saw needs the `unpass` here.
+        if (v !== appliedMaster) hel_command("unpass");
+        hel_command("pass / " + v);
+        el.value = "";
+        el.classList.remove("revealed");
+        appliedMaster = "";
+        refreshMasterState();
+        return true;
+      }
+      // Drop every cached master AND every cleartext copy the page still holds (the
+      // field, the generated result, the reveal state). One wipe path: the label's
+      // "forget" control calls it now, and the TTL sweep will call the same function.
+      function forgetMaster(silent) {
+        hel_command("unpass");
+        const el = masterEl();
+        el.value = "";
+        el.classList.remove("revealed");
+        appliedMaster = null;
+        lastSecret = "";
+        const sec = $("#qsecret");
+        sec.textContent = "";
+        sec.classList.remove("revealed", "correct");
+        sec.style.fontSize = "";
+        $("#qlen").textContent = "";
+        const spec = $("#qname").value.trim();
+        refreshSaveBtn(spec ? hel_parse_name(spec) : "", false, false);
+        refreshMasterState();
+        if (!silent) toast("Master forgotten");
+      }
       function quickGen(silent) {
         const spec = $("#qname").value.trim();
         const sec = $("#qsecret");
@@ -662,6 +733,7 @@
         if (master !== appliedMaster) {
           if (master.length) hel_command("unpass");
           appliedMaster = master;
+          refreshMasterState(); // the cached master just went away
         }
         let out = hel_command("enc " + name);
         if (/^error: name .* not found/m.test(out)) { // unstored leaf: ephemeral add/enc/rm
@@ -722,6 +794,7 @@
           // what was typed is a base's password, not necessarily "the master", and
           // a filled field would wrongly suggest it derives this entry directly.
           hel_command("pass " + lvl + " " + pw);
+          refreshMasterState();
           persist(); // `pass` marks the level correct — keep that hash
           break;
         }
@@ -736,6 +809,7 @@
         if (!lastSecret && name && !masterEl().value && parentChainFor(spec, name).length) {
           await climbAndGen(spec, name);
         }
+        applyMaster(); // the typed master now lives in the engine; the box goes empty
         if (lastSecret) copyText(lastSecret); else toast("Nothing to copy");
       }
       // One click advances the progressive button by one step (Store → Correct →
@@ -800,6 +874,7 @@
         appendLine('<span class="cmd">&gt; ' + esc(redactCmd(cmd)) + "</span>");
         const out = hel_command(cmd);
         persist();
+        refreshMasterState(); // a typed `pass` / `unpass` moves the cached-master state
         if (!out) return;
         const verb = cmd.trim().split(/\s+/)[0];
         const isGen = /^(gen|rnd)\d*$/.test(verb); // gen/rnd password-table rows (gen3, rnd5, …)
@@ -813,7 +888,7 @@
           if (hdr) { const li = hdr.indexOf("Len"); if (li > 1) genPassEnd = li - 2; }
         }
         for (const line of lines) {
-          if (/^(warning|error):/.test(line)) {
+          if (isDiag(line)) {
             appendLine(esc(line), "err");
           } else if (isGen) {
             const p = parseGenLine(line, genPassEnd);
@@ -873,8 +948,9 @@
         }
         const out = hel_command("pass " + name + " " + pw); // long form, no prompt
         persist();
+        refreshMasterState();
         if (out && out.trim()) {
-          for (const l of out.split("\n")) appendLine(esc(l), /^(warning|error):/.test(l) ? "err" : null);
+          for (const l of out.split("\n")) appendLine(esc(l), isDiag(l) ? "err" : null);
         }
         appendLine('<span class="muted"># password cached for ' + esc(name) + "</span>");
       }
@@ -1016,6 +1092,18 @@
           if (e.key !== "Enter") return;
           e.preventDefault();
           commitGen();
+        });
+        // Leaving the box is a commit too: the phrase goes into the engine and the
+        // box empties, so the master is never left lying in the DOM.
+        $("#master").addEventListener("blur", () => applyMaster());
+        // The control sits inside the label; stop the click from also focusing the
+        // field through the label, then focus it deliberately (you forgot a master
+        // because you want to type another one).
+        $("#forgetMaster").addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          forgetMaster(false);
+          masterEl().focus();
         });
         $("#copy").onclick = commitGen;
         $("#saveBtn").onclick = saveStep;
@@ -1210,6 +1298,7 @@
           })
         );
 
+        refreshMasterState(); // no master is cached on a cold open; keep the label honest
         appendLine('<span class="muted"># LesS/KEY ready. Runs entirely in your browser (WASM); nothing is sent to a server. Try: help</span>');
       }
       boot();

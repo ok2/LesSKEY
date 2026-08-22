@@ -10,7 +10,7 @@ peg::parser! {
         pub rule info_cmd_list() -> Command<'input> = space()* c:(ls_cmd() / ld_cmd() / pb_cmd() / save_cmd() / save_def_cmd() / dump_cmd()) { c }
         pub rule mod_cmd_list() -> Command<'input> = space()* c:(add_cmd() / keep_cmd() / mv_cmd() / rm_cmd() / reset_cmd() / comment_cmd ()) { c }
         pub rule asides_cmd_list() -> Command<'input> = space()* c:(help_cmd() / source_cmd() / set_cmd() / quit_cmd() / noop_cmd() / error_cmd()) { c }
-        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / reveal_cmd() / gen_cmd() / rnd_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
+        pub rule enc_cmd_list() -> Command<'input> = space()* c:(enc_cmd() / enc_short_cmd() / reveal_cmd() / gen_cmd() / rnd_cmd() / pass_cmd() / unpass_cmd() / correct_cmd() / uncorrect_cmd()) { c }
         pub rule script() -> Vec<Command<'input>> = c:(info_cmd_list() / mod_cmd_list() / enc_cmd_list() / asides_cmd_list()) ++ "\n" { c }
 
         rule space() -> &'input str = s:$(
@@ -146,6 +146,8 @@ peg::parser! {
         // `enc` takes the rest of the line (like `pb`): a bare name/id, or a
         // sub-command whose output names the entry to encode (e.g. `enc ld re`).
         rule enc_cmd() -> Command<'input> = "enc" _ e:$(([' '..='~'])+) { Command::Enc(e.to_string()) }
+        // Bare `enc`: parses, so the user gets a usage line instead of a raw peg error.
+        rule enc_short_cmd() -> Command<'input> = "enc" { Command::Enc("".to_string()) }
         // `reveal <name>` decrypts and shows an entry's inline #/! blobs.
         rule reveal_cmd() -> Command<'input> = "reveal" _ name:word() { Command::Reveal(name) }
         rule rm_cmd() -> Command<'input> = "rm" _ name:word() { Command::Rm(name) }
@@ -292,6 +294,9 @@ add t3 C 99 2022-12-14
         // `enc` now captures the rest of the line (like `pb`): a bare name/id,
         // or a sub-command (`ld <regex>`) resolved at eval time.
         assert_eq!(command_parser::cmd("enc t3"), Ok(Command::Enc("t3".to_string())));
+        // bare `enc` parses to an empty arg, which cmd_enc_arg turns into a usage line
+        assert_eq!(command_parser::cmd("enc"), Ok(Command::Enc("".to_string())));
+        assert_eq!(command_parser::cmd("enc /"), Ok(Command::Enc("/".to_string())));
         assert_eq!(command_parser::cmd("enc 3"), Ok(Command::Enc("3".to_string())));
         assert_eq!(
             command_parser::cmd("enc ld micro.*exa"),
