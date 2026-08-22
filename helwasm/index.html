@@ -72,6 +72,13 @@
                   and rules, never the password) to <strong>Correct</strong> (confirm this name +
                   master); once confirmed the result shows in colour, so a typo stays black.
                 </p>
+                <p>
+                  The master box empties once your phrase is in memory, so it is not left sitting
+                  in a readable field — an empty box keeps using the master you already typed, the
+                  label says when one is held, and <em>forget</em> drops it. It can also expire on
+                  its own: <code>set hel_pass_ttl 15m</code> in the console forgets a master left
+                  unused that long (<code>help pass</code> for the rest).
+                </p>
               </div>
               <div>
                 <h4>Console</h4>

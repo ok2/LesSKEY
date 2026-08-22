@@ -58,6 +58,7 @@ PASSWORDS
   pb <command>           run a command, copy its output to the clipboard
   pass [name] [pw]       cache a master/override for a subtree (pass = root /)
   unpass [name]          forget cached master (unpass / = root, unpass = all)
+                         (masters are kept encrypted; `help pass` for ageing out)
   correct <name>         trust this password's hash
   uncorrect <name>       untrust it
 
@@ -241,7 +242,24 @@ pass [name] [pw]   cache a master for <name> and its subtree for this session.
                    `pass` (or `pass /`) is the ROOT master used by top-level entries.
                    Nothing is written to disk.
 unpass [name]      forget a cached master: `unpass <name>` one, `unpass /` the
-                   root, `unpass` (no argument) all of them.";
+                   root, `unpass` (no argument) all of them.
+
+Cached masters are held ENCRYPTED in memory (a random key, re-minted on every
+expiry sweep) and can age out on their own:
+
+  set hel_pass_ttl 15m       forget a master left unused for 15 minutes
+  set hel_pass_max_age 8h    forget it 8 hours after it was entered, used or not
+
+Both are off by default; `0` switches one off again. A duration is a bare number
+of seconds (900) or a number with a unit (45s, 15m, 2h, 1d). Expiry is checked
+before every command, and while the prompt sits idle a background sweep wipes
+what has aged out and says so. In the browser tool the page does the same tick,
+and `set hel_pass_lock_on_hide 1` drops every cached master as soon as the app
+goes to the background.
+
+None of this protects a live process — an attacker who can read hel's memory
+reads the key too. What it shortens is how long a master lingers where a core
+dump, a swapped page or a heap snapshot can find it.";
 
 const HELP_CORRECT: &str = "\
 correct <name>     remember this password's hash as trusted, in ~/.hel_correct
@@ -303,7 +321,11 @@ set <key> <value>   set a runtime config value (typically from ~/.helrc). Keys
   hel_pb            clipboard command for `pb` (else the built-in multi-sink copy)
   hel_enc_strict    1/true/on -> `enc ls|ld <re>` errors when >1 entry matches
   hel_dump          default `save`/`dump` target
-  hel_notion_token  token for the `hel store`/`hel load` Notion subcommands";
+  hel_notion_token  token for the `hel store`/`hel load` Notion subcommands
+  hel_pass_ttl      forget a cached master unused for this long   (help pass)
+  hel_pass_max_age  forget it this long after it was entered      (help pass)
+  hel_pass_lock_on_hide   browser tool: 1/true/on -> forget every cached
+                    master when the app goes to the background";
 
 const HELP_FILES: &str = "\
 files and environment

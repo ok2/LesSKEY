@@ -6,7 +6,55 @@ recorded here, newest first. The web app mirrors these entries in its in-app
 [Keep a Changelog](https://keepachangelog.com/); versions are the web app's
 release stamp.
 
-## [Unreleased]
+## [Unreleased] — A cache that forgets
+
+Cut as 1.4.0 when the round is shipped (this section moves under a dated
+heading and the in-app "What's new" entry is added then, so the footer badge
+never claims a version that is not deployed).
+
+### Added
+
+- **Cached masters are encrypted in memory.** `pass` no longer keeps your
+  master as a plain string for the session: each value is sealed with
+  XChaCha20-Poly1305 under a random key that is re-minted on every expiry
+  sweep, and the plaintext exists only for the moment a derivation needs it.
+  This is about _residency_, not a security boundary — an attacker who can read
+  the live process reads the key too. What it shortens is how long a master
+  lingers where a core dump, a swapped page, a hibernation image or a browser
+  heap snapshot can find it.
+- **Cached masters can age out.** `set hel_pass_ttl 15m` forgets a master left
+  unused that long; `set hel_pass_max_age 8h` forgets it that long after it was
+  entered, used or not. Both are off by default, `0` switches one off, and a
+  duration is a bare number of seconds (`900`) or a number with a unit (`45s`,
+  `15m`, `2h`, `1d`). Expiry is checked before every command, and while the
+  prompt sits idle a background sweep wipes what has aged out and says so
+  without garbling what you are typing. The web tool runs the same sweep on a
+  timer and clears the password it was showing.
+- **`set hel_pass_lock_on_hide 1`** (web tool, off by default) drops every
+  cached master the moment the app goes to the background.
+- **`set` refuses a duration it cannot read.** `set hel_pass_ttl "quarter hour"`
+  is an error instead of silently meaning "never expires" — the one typo that
+  would disable the protection it was meant to enable.
+
+### Changed
+
+- **The web tool's master box is write-only.** What you type is pushed into the
+  engine at the first commit (Enter, Copy, or leaving the box) and the box is
+  emptied, so your master no longer sits in a readable input field for the whole
+  session. An empty box still means "use the cached master"; the label says when
+  one is held and offers to forget it.
+
+### Fixed
+
+- **`enc /` prints the root master** instead of "error: name / not found". A
+  root (`/` or a `+name`) has its password entered, never derived, and needs no
+  catalog entry — `enc +bohr` works the same way, and an uncached root now says
+  so instead of reporting a missing name.
+- **A bare `enc` explains itself** instead of printing the raw parser error.
+- **Diagnostics are no longer masked as passwords in the web console.** The
+  parser writes `error at L:C:`, which the console's `warning:`/`error:` test
+  missed, so a parse error was rendered as a maskable secret; `note:` lines
+  (which `enc` emits when several entries match) had the same problem.
 
 ## [1.3.3] - 2026-08-20 — Anchors that hold
 
