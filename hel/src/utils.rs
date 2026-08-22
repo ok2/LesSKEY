@@ -131,6 +131,13 @@ pub mod editor {
             }
         }
 
+        /// A handle that prints from another thread without garbling a
+        /// half-typed line — rustyline redraws the prompt around the message.
+        /// `None` when the terminal cannot provide one (not a tty, piped input).
+        pub fn external_printer(&mut self) -> Option<impl rustyline::ExternalPrinter + Send> {
+            self.editor.create_external_printer().ok()
+        }
+
         pub fn readline<'a>(&mut self, prompt: &str) -> Result<String, LKErr<'a>> {
             match self.editor.readline(prompt) {
                 Ok(line) => Ok(line),

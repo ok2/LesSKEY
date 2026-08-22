@@ -24,6 +24,12 @@ export function hel_command(cmd: string): string;
 export function hel_entry(name: string): string;
 
 /**
+ * A boolean setting as the engine sees it (`set <key> 1|true|yes|on`), so the
+ * page can honour a config flag instead of keeping its own copy.
+ */
+export function hel_flag(key: string): boolean;
+
+/**
  * True if a master/parent password is currently cached for `name` (what the
  * `pass` command stores, and what `unpass` drops). Presence only — the secret
  * itself never crosses the boundary. The page uses it to show whether a master
@@ -74,6 +80,14 @@ export function hel_parse(spec: string): string;
  */
 export function hel_parse_name(spec: string): string;
 
+/**
+ * One expiry tick, driven by the page's timer (the browser is single-threaded,
+ * so there is no sweeper thread here). Wipes every cached password that has
+ * aged out and returns their names, one per line — "" when nothing went. Does
+ * no work at all while both TTLs are off.
+ */
+export function hel_tick(): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -82,11 +96,13 @@ export interface InitOutput {
     readonly hel_chain: (a: number, b: number) => [number, number];
     readonly hel_command: (a: number, b: number) => [number, number];
     readonly hel_entry: (a: number, b: number) => [number, number];
+    readonly hel_flag: (a: number, b: number) => number;
     readonly hel_has_secret: (a: number, b: number) => number;
     readonly hel_load_script: (a: number, b: number) => [number, number];
     readonly hel_names: (a: number, b: number) => [number, number];
     readonly hel_parse: (a: number, b: number) => [number, number];
     readonly hel_parse_name: (a: number, b: number) => [number, number];
+    readonly hel_tick: () => [number, number];
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

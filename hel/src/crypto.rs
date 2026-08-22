@@ -110,7 +110,7 @@ fn aad(ttype: TokenType, name: &str, seq: u32) -> Vec<u8> {
     a
 }
 
-fn fill_random(buf: &mut [u8]) -> Result<(), CryptoError> {
+pub(crate) fn fill_random(buf: &mut [u8]) -> Result<(), CryptoError> {
     getrandom::getrandom(buf).map_err(|_| CryptoError::Random)
 }
 

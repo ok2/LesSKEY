@@ -256,7 +256,7 @@
     </div>
 
     <script type="module">
-      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry, hel_has_secret, hel_names, hel_chain } from "./pkg/helwasm.js";
+      import init, { hel_init, hel_command, hel_load_script, hel_parse, hel_parse_name, hel_entry, hel_flag, hel_has_secret, hel_names, hel_tick, hel_chain } from "./pkg/helwasm.js";
 
       const $ = (s) => document.querySelector(s);
       const masterEl = () => document.getElementById("master");
@@ -693,8 +693,9 @@
       // Drop every cached master AND every cleartext copy the page still holds (the
       // field, the generated result, the reveal state). One wipe path: the label's
       // "forget" control calls it now, and the TTL sweep will call the same function.
-      function forgetMaster(silent) {
-        hel_command("unpass");
+      // Clear every cleartext copy the PAGE holds. Does not touch the engine —
+      // `forgetMaster` runs `unpass` first, the expiry tick has already wiped.
+      function wipeMasterUi() {
         const el = masterEl();
         el.value = "";
         el.classList.remove("revealed");
@@ -708,6 +709,10 @@
         const spec = $("#qname").value.trim();
         refreshSaveBtn(spec ? hel_parse_name(spec) : "", false, false);
         refreshMasterState();
+      }
+      function forgetMaster(silent) {
+        hel_command("unpass");
+        wipeMasterUi();
         if (!silent) toast("Master forgotten");
       }
       function quickGen(silent) {
@@ -1104,6 +1109,31 @@
           e.stopPropagation();
           forgetMaster(false);
           masterEl().focus();
+        });
+        // ---- expiry tick ----
+        // The browser is single-threaded, so the page drives what the CLI's
+        // sweeper thread does: once a second, wipe cached masters that have aged
+        // out (`set hel_pass_ttl 15m` / `set hel_pass_max_age 8h`) and clear the
+        // cleartext the page still shows. hel_tick() returns immediately while
+        // both limits are off, which is the default.
+        setInterval(() => {
+          const dropped = hel_tick().split("\n").filter(Boolean);
+          if (!dropped.length) return;
+          appendLine('<span class="muted"># forgot the cached password for ' + esc(dropped.join(", ")) + " (expired)</span>");
+          if (dropped.includes("/")) {
+            wipeMasterUi();
+            toast("Master expired");
+          } else {
+            refreshMasterState();
+          }
+        }, 1000);
+        // Optional: drop every cached master the moment the app goes to the
+        // background (`set hel_pass_lock_on_hide 1`; off by default).
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState !== "hidden") return;
+          if (!hel_flag("hel_pass_lock_on_hide")) return;
+          hel_command("unpass");
+          wipeMasterUi();
         });
         $("#copy").onclick = commitGen;
         $("#saveBtn").onclick = saveStep;

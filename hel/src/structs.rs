@@ -450,6 +450,9 @@ impl fmt::Display for Radix {
 pub fn init() -> Option<LKRead> {
     let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
     let editor = Editor::new();
+    // The prompt blocks in `readline`, so without this a cached master would sit
+    // in memory until the next keystroke, however long that takes.
+    spawn_pass_sweeper(lk.clone(), &editor);
 
     match crate::storage::read(INIT_FILE.to_str().unwrap()) {
         Ok(script) => match command_parser::script(&script) {
@@ -482,6 +485,36 @@ pub fn init() -> Option<LKRead> {
     }
     Some(LKRead::new(editor.clone(), PROMPT_SETTING.to_string(), lk.clone()))
 }
+
+/// Wipe aged-out `pass` entries once a second while the prompt is idle. Only
+/// runs while a TTL is configured — with both limits off nothing can expire, so
+/// the thread stays out of the way (no lock traffic, no key churn).
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_pass_sweeper(lk: crate::lk::LKRef, editor: &crate::utils::editor::EditorRef) {
+    use rustyline::ExternalPrinter;
+    let mut printer = editor.lock().external_printer();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        if crate::secrets::Policy::from_config().is_off() {
+            continue;
+        }
+        let dropped = crate::lk::sweep_tick(&lk);
+        if dropped.is_empty() {
+            continue;
+        }
+        let msg = format!("{}\n", crate::lk::expired_note(&dropped));
+        match printer.as_mut() {
+            Some(p) => {
+                let _ = p.print(msg);
+            }
+            None => eprint!("{}", msg),
+        }
+    });
+}
+
+/// The browser is single-threaded: its tick comes from the page (HEL-007 M5).
+#[cfg(target_arch = "wasm32")]
+fn spawn_pass_sweeper(_lk: crate::lk::LKRef, _editor: &crate::utils::editor::EditorRef) {}
 
 #[cfg(test)]
 mod tests {

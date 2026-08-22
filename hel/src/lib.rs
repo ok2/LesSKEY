@@ -11,6 +11,7 @@ pub mod lk;
 pub mod parser;
 pub mod password;
 pub mod repl;
+pub mod secrets;
 pub mod skey;
 pub mod storage;
 pub mod structs;

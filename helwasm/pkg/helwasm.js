@@ -68,6 +68,19 @@ export function hel_entry(name) {
 }
 
 /**
+ * A boolean setting as the engine sees it (`set <key> 1|true|yes|on`), so the
+ * page can honour a config flag instead of keeping its own copy.
+ * @param {string} key
+ * @returns {boolean}
+ */
+export function hel_flag(key) {
+    const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.hel_flag(ptr0, len0);
+    return ret !== 0;
+}
+
+/**
  * True if a master/parent password is currently cached for `name` (what the
  * `pass` command stores, and what `unpass` drops). Presence only — the secret
  * itself never crosses the boundary. The page uses it to show whether a master
@@ -184,6 +197,26 @@ export function hel_parse_name(spec) {
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * One expiry tick, driven by the page's timer (the browser is single-threaded,
+ * so there is no sweeper thread here). Wipes every cached password that has
+ * aged out and returns their names, one per line — "" when nothing went. Does
+ * no work at all while both TTLs are off.
+ * @returns {string}
+ */
+export function hel_tick() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.hel_tick();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
     }
 }
 function __wbg_get_imports() {

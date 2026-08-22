@@ -108,6 +108,14 @@ impl<'a> LKEval<'a> {
 
     pub fn eval(&self) -> LKPrint {
         let out = LKOut::new();
+        // Age out cached masters BEFORE the command runs, so no command can use a
+        // password that has expired and the wipe happens even where no sweeper
+        // thread exists (the browser build). Reads are expiry-checked anyway; this
+        // is what turns "unusable" into "gone".
+        let dropped = crate::lk::sweep_tick(&self.state);
+        if !dropped.is_empty() {
+            out.e(crate::lk::expired_note(&dropped));
+        }
         let mut quit: bool = false;
         let history_file = HISTORY_FILE.to_str().unwrap();
         let mut to_history = true;
@@ -173,9 +181,12 @@ impl<'a> LKEval<'a> {
             Command::Set(key, value) => { to_history = false; self.cmd_set(&out, key, value); }
             Command::Pass(name, None) => self.cmd_pass(&out, &name, &None),
             Command::Pass(name, pass) => { to_history = false; self.cmd_pass(&out, &name, &pass); },
-            Command::UnPass(Some(name)) => match self.state.lock().borrow_mut().secrets.remove(name) {
-                Some(_) => out.o(format!("Removed saved password for {}", name)),
-                None => out.e(format!("error: saved password for {} not found", name)),
+            Command::UnPass(Some(name)) => {
+                if self.state.lock().borrow_mut().secrets.remove(name) {
+                    out.o(format!("Removed saved password for {}", name))
+                } else {
+                    out.e(format!("error: saved password for {} not found", name))
+                }
             },
             Command::UnPass(None) => {
                 self.state.lock().borrow_mut().secrets.clear();
@@ -525,7 +536,7 @@ mod tests {
         let (name, pass) = ev.cmd_enc(&inactive, &"t".to_string()).unwrap();
         assert_eq!(name, "t");
         let pwd = lk.lock().borrow().db.get("t").unwrap().clone();
-        assert_eq!(pass, pwd.lock().borrow().encode("master"), "correct must hash the derived password");
+        assert_eq!(*pass, pwd.lock().borrow().encode("master"), "correct must hash the derived password");
         assert!(pass.contains(' '), "derived password is R-mode words, not a 6-digit code: {:?}", pass);
     }
 
@@ -565,14 +576,14 @@ mod tests {
         LKEval::newd(command_parser::cmd("add +solo R 99 2026-1-1").unwrap(), lk.clone(), rp2).eval();
         let pr = LKEval::newd(command_parser::cmd("enc +solo").unwrap(), lk.clone(), rp2).eval();
         assert_eq!(pr.out.out.as_ref().unwrap().lock()[0], "solo pw");
-        assert_eq!(lk.lock().borrow().secrets[&"+solo".to_string()], "solo pw");
+        assert_eq!(*lk.lock().borrow().secrets.get("+solo").unwrap(), "solo pw");
 
         // `pass +root` works BEFORE the catalog holds the entry (like `pass /`),
         // so an import script can set all roots up front.
         let lk2 = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
         let pr = LKEval::newd(command_parser::cmd("pass +early xyz").unwrap(), lk2.clone(), rp).eval();
         assert!(pr.out.err.as_ref().unwrap().lock().iter().all(|l| !l.contains("not found")));
-        assert_eq!(lk2.lock().borrow().secrets[&"+early".to_string()], "xyz");
+        assert_eq!(*lk2.lock().borrow().secrets.get("+early").unwrap(), "xyz");
     }
 
     #[test]
@@ -688,7 +699,7 @@ mod tests {
         assert!(pr.out.out.as_ref().unwrap().lock().iter().any(|l| l.contains("dropped 2 entries")));
         assert_eq!(lk.lock().borrow().db.len(), 0);
         assert_eq!(lk.lock().borrow().ls.len(), 0);
-        assert_eq!(lk.lock().borrow().secrets[&"/".to_string()], "m");
+        assert_eq!(*lk.lock().borrow().secrets.get("/").unwrap(), "m");
 
         // reimport works cleanly after the reset (no "already exist")
         let pr = LKEval::newd(command_parser::cmd("add one R 99 2026-1-1").unwrap(), lk.clone(), rp).eval();
@@ -710,9 +721,9 @@ mod tests {
         ));
         LKEval::news(Command::Add(t1.clone()), lk.clone()).eval();
         LKEval::newd(Command::Pass("t1".to_string(), None), lk.clone(), |_| { Ok("test pwd1".to_string()) }).eval();
-        assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "test pwd1");
+        assert_eq!(*lk.lock().borrow().secrets.get("t1").unwrap(), "test pwd1");
         LKEval::news(Command::Pass("t1".to_string(), Some("other pw".to_string())), lk.clone()).eval();
-        assert_eq!(lk.lock().borrow().secrets[&"t1".to_string()], "other pw");
+        assert_eq!(*lk.lock().borrow().secrets.get("t1").unwrap(), "other pw");
     }
 
     #[test]
@@ -732,6 +743,59 @@ mod tests {
         // bare `enc` is a usage line, not a parse error
         let pr = LKEval::news(Command::Enc("".to_string()), lk.clone()).eval();
         assert!(pr.out.err.as_ref().unwrap().lock().join("").contains("enc needs a name"));
+    }
+
+    #[test]
+    fn exec_pass_ttl_expires_in_the_command_path() {
+        use crate::secrets::Stamp;
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // cached "back in 1970", so any TTL at all makes it aged out. Nothing may
+        // read it before the TTL is set — a read refreshes the idle clock.
+        lk.lock().borrow_mut().secrets.insert_at("/".to_string(), "root master", Stamp::at(0));
+        crate::structs::config_set("hel_pass_ttl", "1s");
+        let pr = LKEval::news(Command::Enc("/".to_string()), lk.clone()).eval();
+        assert!(
+            pr.out.err.as_ref().unwrap().lock().join("").contains("is a root: its password is entered"),
+            "an expired root must read as uncached, got {:?}",
+            pr.out.data()
+        );
+        // a freshly entered one is usable again under the same TTL
+        LKEval::news(Command::Pass("/".to_string(), Some("new master".to_string())), lk.clone()).eval();
+        let pr = LKEval::news(Command::Enc("/".to_string()), lk.clone()).eval();
+        assert_eq!(pr.out.data(), "new master");
+        crate::structs::config_set("hel_pass_ttl", "0");
+    }
+
+    #[test]
+    fn dispatch_sweep_wipes_and_says_so() {
+        use crate::secrets::Stamp;
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        lk.lock().borrow_mut().secrets.insert_at("+bohr".to_string(), "bohr master", Stamp::at(0));
+        crate::structs::config_set("hel_pass_ttl", "1s");
+        // ANY command sweeps first: the expired entry is gone, not merely unusable
+        let pr = LKEval::news(Command::Noop, lk.clone()).eval();
+        assert!(
+            pr.out.err.as_ref().unwrap().lock().join("").contains("forgot the cached password for +bohr (expired)"),
+            "the sweep must say what it dropped"
+        );
+        assert_eq!(lk.lock().borrow().secrets.len(), 0, "and actually wipe it");
+        // nothing left to report on the next command
+        let pr = LKEval::news(Command::Noop, lk.clone()).eval();
+        assert!(!pr.out.err.as_ref().unwrap().lock().join("").contains("forgot"));
+        crate::structs::config_set("hel_pass_ttl", "0");
+    }
+
+    #[test]
+    fn exec_cmd_set_rejects_an_unreadable_ttl() {
+        let lk = Arc::new(ReentrantMutex::new(RefCell::new(LK::new())));
+        // its own key, so the TTL test running in parallel cannot collide with it
+        let pr = LKEval::news(Command::Set("hel_pass_max_age".to_string(), "quarter hour".to_string()), lk.clone()).eval();
+        assert!(pr.out.err.as_ref().unwrap().lock().join("").contains("takes a duration"));
+        assert_eq!(crate::structs::config_get("hel_pass_max_age"), None, "a rejected value must not be stored");
+        // ... while a readable one goes through
+        LKEval::news(Command::Set("hel_pass_max_age".to_string(), "15min".to_string()), lk.clone()).eval();
+        assert_eq!(crate::structs::config_get("hel_pass_max_age"), Some("15min".to_string()));
+        crate::structs::config_set("hel_pass_max_age", "0");
     }
 
     fn mk(name: &str, y: i32, m: u32, d: u32) -> crate::password::PasswordRef {

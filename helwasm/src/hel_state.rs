@@ -133,6 +133,25 @@ pub fn hel_chain(name: String) -> String {
     out.join("\n")
 }
 
+/// One expiry tick, driven by the page's timer (the browser is single-threaded,
+/// so there is no sweeper thread here). Wipes every cached password that has
+/// aged out and returns their names, one per line — "" when nothing went. Does
+/// no work at all while both TTLs are off.
+#[wasm_bindgen]
+pub fn hel_tick() -> String {
+    if hel::secrets::Policy::from_config().is_off() {
+        return String::new();
+    }
+    hel::lk::sweep_tick(&STATE).join("\n")
+}
+
+/// A boolean setting as the engine sees it (`set <key> 1|true|yes|on`), so the
+/// page can honour a config flag instead of keeping its own copy.
+#[wasm_bindgen]
+pub fn hel_flag(key: String) -> bool {
+    hel::structs::config_flag(&key)
+}
+
 /// Run a whole multi-line script (every `add …` line, `set …`, etc.) against the
 /// shared state in one call. Used to bulk-import a pasted catalog (e.g. the text
 /// of the Notion page) and to load the persisted catalog from localStorage.

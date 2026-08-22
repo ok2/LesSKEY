@@ -8,6 +8,8 @@ use crate::parser::command_parser;
 use crate::password::fix_password_recursion;
 use crate::password::{is_plus_root, Name, Password, PasswordRef};
 use crate::repl::LKEval;
+use crate::secrets::parse_duration_ms;
+use zeroize::Zeroizing;
 use crate::structs::{config_flag, config_get, config_set, Command, LKOut, LsScope, Mode, Radix, CORRECT_FILE, DUMP_FILE};
 use crate::totp;
 use crate::utils::editor::password;
@@ -367,7 +369,10 @@ impl<'a> LKEval<'a> {
         self.state.lock().borrow().ls.values().find(|p| p.lock().borrow().name == *name).cloned()
     }
 
-    pub fn read_master(&self, out: &LKOut, pwd: PasswordRef, read: bool) -> Option<String> {
+    /// The master a derivation needs: the cached `pass` value, a climb up the
+    /// `^parent` chain, or a prompt. The result is `Zeroizing`, so the plaintext
+    /// dies with the caller's binding instead of lingering in a freed `String`.
+    pub fn read_master(&self, out: &LKOut, pwd: PasswordRef, read: bool) -> Option<Zeroizing<String>> {
         if read {
             match self.read_master(&out, pwd.clone(), false) {
                 Some(p) => {
@@ -380,16 +385,16 @@ impl<'a> LKEval<'a> {
         // password (like `/`), never a derivation — any ^parent is ignored.
         let self_name = pwd.lock().borrow().name.to_string();
         if is_plus_root(&self_name) {
-            if let Some(s) = self.state.lock().borrow().secrets.get(&self_name).cloned() {
+            if let Some(s) = self.state.lock().borrow().secrets.get(&self_name) {
                 return Some(s);
             }
             if !read {
                 return None;
             }
-            return match (self.read_password)(self_name.to_string()) {
+            return match (self.read_password)(self_name.to_string()).map(Zeroizing::new) {
                 Ok(password) if !password.is_empty() => {
                     self.cmd_correct(&out, &self_name, true, Some(password.clone()));
-                    self.state.lock().borrow_mut().secrets.insert(self_name, password.clone());
+                    self.state.lock().borrow_mut().secrets.insert(self_name, &password);
                     Some(password)
                 }
                 _ => {
@@ -405,20 +410,17 @@ impl<'a> LKEval<'a> {
             Some(p) => p.lock().borrow().name.to_string(),
             None => "/".to_string(),
         };
-        let secret = match self.state.lock().borrow().secrets.get(&parent) {
-            Some(p) => Some(p.clone()),
-            None => None,
-        };
+        let secret = self.state.lock().borrow().secrets.get(&parent);
         match (pwd.lock().borrow().parent.clone(), secret) {
-            (_, Some(s)) => Some(s.to_string()),
+            (_, Some(s)) => Some(s),
             (None, None) => {
                 if read {
                     let name = "/".to_string();
-                    match (self.read_password)(name.to_string()) {
+                    match (self.read_password)(name.to_string()).map(Zeroizing::new) {
                         Ok(password) => {
                             if password.len() > 0 {
                                 self.cmd_correct(&out, &name, true, Some(password.clone()));
-                                self.state.lock().borrow_mut().secrets.insert(name, password.clone());
+                                self.state.lock().borrow_mut().secrets.insert(name, &password);
                                 Some(password)
                             } else { None }
                         }
@@ -430,14 +432,14 @@ impl<'a> LKEval<'a> {
             }
             (Some(pn), None) => {
                 let password = if read {
-                    (self.read_password)(pn.lock().borrow().name.to_string()).ok()
+                    (self.read_password)(pn.lock().borrow().name.to_string()).ok().map(Zeroizing::new)
                 } else {
                     None
                 };
                 if password.is_some() && password.as_ref().unwrap().len() > 0 {
                     let name = pn.lock().borrow().name.to_string();
                     self.cmd_correct(&out, &name, true, Some(password.as_ref().unwrap().clone()));
-                    self.state.lock().borrow_mut().secrets.insert(name, password.as_ref().unwrap().clone());
+                    self.state.lock().borrow_mut().secrets.insert(name, password.as_ref().unwrap());
                     password
                 } else if is_plus_root(&pn.lock().borrow().name) {
                     // The chain STOPS at a `+` root: it is not derived from any
@@ -453,10 +455,10 @@ impl<'a> LKEval<'a> {
                 } else {
                     match self.read_master(&out, pn.clone(), read) {
                         Some(master) => {
-                            let password = pn.lock().borrow().encode(master.as_str());
+                            let password = Zeroizing::new(pn.lock().borrow().encode(master.as_str()));
                             let name = pn.lock().borrow().name.to_string();
-                            self.cmd_correct(&out, &name, true, Some(password.to_string()));
-                            self.state.lock().borrow_mut().secrets.insert(name, password.clone());
+                            self.cmd_correct(&out, &name, true, Some(password.clone()));
+                            self.state.lock().borrow_mut().secrets.insert(name, &password);
                             Some(password)
                         }
                         None => None,
@@ -528,24 +530,29 @@ impl<'a> LKEval<'a> {
     pub fn cmd_pass(&self, out: &LKOut, name: &String, pass: &Option<String>) {
         match self.get_password(name) {
             Some(p) => {
-                let pwd = match pass {
+                let pwd = Zeroizing::new(match pass {
                     Some(pp) => pp.to_string(),
                     None => (self.read_password)(p.lock().borrow().name.to_string()).unwrap(),
-                };
+                });
                 self.cmd_correct(&out, &p.lock().borrow().name, true, Some(pwd.clone()));
-                self.state.lock().borrow_mut().secrets.insert(p.lock().borrow().name.to_string(), pwd);
+                let name = p.lock().borrow().name.to_string();
+                if !self.state.lock().borrow_mut().secrets.insert(name.clone(), &pwd) {
+                    out.e(format!("error: could not cache the password for {} (no randomness?)", name));
+                }
             }
             None => {
                 // Roots take a secret without a catalog entry: `/` always did;
                 // a `+` root's password is likewise entered, not derived, so
                 // `pass +vault …` may precede loading the catalog it anchors.
                 if name == "/" || is_plus_root(name) {
-                    let pwd = match pass {
+                    let pwd = Zeroizing::new(match pass {
                         Some(pp) => pp.to_string(),
                         None => (self.read_password)(name.to_string()).unwrap(),
-                    };
+                    });
                     self.cmd_correct(&out, name, true, Some(pwd.clone()));
-                    self.state.lock().borrow_mut().secrets.insert(name.to_string(), pwd);
+                    if !self.state.lock().borrow_mut().secrets.insert(name.to_string(), &pwd) {
+                        out.e(format!("error: could not cache the password for {} (no randomness?)", name));
+                    }
                 } else {
                     out.e(format!("error: password with name {} not found", name));
                 }
@@ -586,7 +593,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, String)> {
+    pub fn cmd_enc(&self, out: &LKOut, name: &String) -> Option<(String, Zeroizing<String>)> {
         // `/` and a `+` name are ROOTS: their password is entered, never derived, and
         // they need no catalog entry at all. When there is none, the cached `pass`
         // value IS the answer — hand it back instead of hunting for an entry.
@@ -599,7 +606,7 @@ impl<'a> LKEval<'a> {
             return None;
         }
         let (name, pass, pwd_opt) = if bare_root {
-            (name.to_string(), self.state.lock().borrow().secrets.get(name).unwrap().to_string(), None)
+            (name.to_string(), self.state.lock().borrow().secrets.get(name).unwrap(), None)
         } else {
             let pwd = match self.get_password(name) {
                 Some(p) => p.clone(),
@@ -610,13 +617,13 @@ impl<'a> LKEval<'a> {
             };
             let name = pwd.lock().borrow().name.to_string();
             if self.state.lock().borrow().secrets.contains_key(&name) {
-                (name.clone(), self.state.lock().borrow().secrets.get(&name).unwrap().to_string(), Some(pwd))
+                (name.clone(), self.state.lock().borrow().secrets.get(&name).unwrap(), Some(pwd))
             } else {
                 match self.read_master(&out, pwd.clone(), true) {
                     Some(sec) => {
                         // A `+` root's password IS its entered value (like `enc /`
                         // returns the root master), not a derived rendering.
-                        let p = if is_plus_root(&name) { sec } else { pwd.lock().borrow().encode(sec.as_str()) };
+                        let p = if is_plus_root(&name) { sec } else { Zeroizing::new(pwd.lock().borrow().encode(sec.as_str())) };
                         (name.clone(), p, Some(pwd))
                     }
                     None => {
@@ -635,13 +642,15 @@ impl<'a> LKEval<'a> {
                 let pwd = pwd_opt.as_ref().unwrap();
                 match self.read_master(out, pwd.clone(), true) {
                     Some(sec) => {
-                        let kek = pwd.lock().borrow().kek_material(sec.as_str());
+                        let kek = Zeroizing::new(pwd.lock().borrow().kek_material(sec.as_str()));
                         self.cmd_enc_totp(out, pwd, &kek);
                     }
                     None => out.e(format!("error: master for {} not found", name)),
                 }
             } else {
-                out.o(pass.clone());
+                // The rendered password necessarily becomes a plain `String` here:
+                // this IS the value being shown or copied.
+                out.o(pass.to_string());
             }
             // Trust-check the DERIVED PASSWORD (`pass` — the value that also decrypts
             // a T entry's seed), NEVER the TOTP code. The code is time-varying and is
@@ -710,7 +719,7 @@ impl<'a> LKEval<'a> {
         // cached in `secrets` can't reproduce it, so always resolve the chain
         // (read_master hits the parent cache — no re-prompt in the common case).
         let passphrase = match self.read_master(out, pwd.clone(), true) {
-            Some(sec) => pwd.lock().borrow().kek_material(sec.as_str()),
+            Some(sec) => Zeroizing::new(pwd.lock().borrow().kek_material(sec.as_str())),
             None => {
                 out.e(format!("error: master for {} not found", ename));
                 return;
@@ -750,7 +759,7 @@ impl<'a> LKEval<'a> {
                 return Err(());
             }
         };
-        let passphrase = pwd.lock().borrow().kek_material(&master);
+        let passphrase = Zeroizing::new(pwd.lock().borrow().kek_material(&master));
         match seal_inline_markers(&comment, &passphrase, &name, seq) {
             Ok(sealed) => {
                 pwd.lock().borrow_mut().comment = Some(sealed);
@@ -1010,6 +1019,16 @@ impl<'a> LKEval<'a> {
     }
 
     pub fn cmd_set(&self, out: &LKOut, key: &String, value: &String) {
+        // A duration key is security-relevant: "15min" would parse as nothing and
+        // silently mean "never expires". Refuse it instead of quietly disabling.
+        let k = key.to_lowercase();
+        if (k == "hel_pass_ttl" || k == "hel_pass_max_age") && !is_duration_or_off(value) {
+            out.e(format!(
+                "error: {} takes a duration (900, 45s, 15m, 2h, 1d) or 0 to switch it off",
+                k
+            ));
+            return;
+        }
         config_set(key, value);
         // Confirm without echoing the value — it may be a secret.
         out.o(format!("set {}", key.to_lowercase()));
@@ -1128,7 +1147,7 @@ impl<'a> LKEval<'a> {
         }
     }
 
-    pub fn cmd_correct(&self, out: &LKOut, name: &String, correct: bool, check: Option<String>) {
+    pub fn cmd_correct(&self, out: &LKOut, name: &String, correct: bool, check: Option<Zeroizing<String>>) {
         let (check, pwd) = match check {
             Some(p) => (true, Some((name.to_string(), p))),
             None => (
@@ -1166,7 +1185,7 @@ impl<'a> LKEval<'a> {
         };
         let mut sha1 = Sha1::new();
         sha1.update(name.to_string());
-        sha1.update(&pwd);
+        sha1.update(pwd.as_bytes());
         let encpwd: String = sha1.finalize().iter().map(|b| format!("{:02x}", b)).collect();
         if check {
             if data.contains(&encpwd) {
@@ -1232,15 +1251,15 @@ impl<'a> LKEval<'a> {
             self.state.lock().borrow_mut().ls.insert(key, pwd.clone());
         }
         self.state.lock().borrow().fix_hierarchy();
-        let mut encpwds: Vec<(PasswordRef, String)> = Vec::new();
+        let mut encpwds: Vec<(PasswordRef, Zeroizing<String>)> = Vec::new();
         for pwd in &genpwds {
             let mut h = [0u8; 20];
             if getrandom::getrandom(&mut h).is_err() {
                 out.e("error: random source unavailable".to_string());
                 return;
             }
-            let master: String = h.iter().map(|b| format!("{:02x}", b)).collect();
-            let pass = pwd.lock().borrow().encode(&master);
+            let master = Zeroizing::new(h.iter().map(|b| format!("{:02x}", b)).collect::<String>());
+            let pass = Zeroizing::new(pwd.lock().borrow().encode(&master));
             encpwds.push((pwd.clone(), pass));
         }
         encpwds.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
@@ -1282,7 +1301,7 @@ impl<'a> LKEval<'a> {
             Some(e) => Some(e.clone()),
             None => None,
         };
-        let mut encpwds: Vec<(PasswordRef, String)> = Vec::new();
+        let mut encpwds: Vec<(PasswordRef, Zeroizing<String>)> = Vec::new();
         for (pwd, key) in lspwds {
             let pass = match self.cmd_enc(&LKOut::from_lkout(None, err), &key) {
                 Some((name, pass)) => {
@@ -1416,4 +1435,11 @@ fn seal_inline_markers(
         }
     }
     Ok(out)
+}
+
+/// A `hel_pass_ttl` / `hel_pass_max_age` value hel can act on: a duration it
+/// parses, or an explicit off (`0`, empty).
+fn is_duration_or_off(value: &str) -> bool {
+    let v = value.trim();
+    v.is_empty() || v == "0" || parse_duration_ms(v).is_some()
 }
