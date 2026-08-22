@@ -6,11 +6,9 @@ recorded here, newest first. The web app mirrors these entries in its in-app
 [Keep a Changelog](https://keepachangelog.com/); versions are the web app's
 release stamp.
 
-## [Unreleased] — A cache that forgets
+## [Unreleased]
 
-Cut as 1.4.0 when the round is shipped (this section moves under a dated
-heading and the in-app "What's new" entry is added then, so the footer badge
-never claims a version that is not deployed).
+## [1.4.0] - 2026-08-22 — A cache that forgets
 
 ### Added
 
