@@ -1363,6 +1363,14 @@
             return el && (el.value || document.activeElement === el);
           });
 
+        // Session-scoped guards. sessionStorage survives a reload but not a
+        // cold start, which is exactly the lifetime both of these need.
+        const RELOADED = "lesskey-sw-auto-reloaded";
+        const CHECKED = "lesskey-sw-checked-at";
+        const CHECK_GAP_MS = 15 * 60 * 1000;
+        const flag = (k) => { try { return sessionStorage.getItem(k); } catch (_) { return null; } };
+        const setFlag = (k, v) => { try { sessionStorage.setItem(k, v); } catch (_) { /* private mode */ } };
+
         window.addEventListener("load", async () => {
           try {
             // updateViaCache:'none' -> sw.js itself is always fetched fresh, so a
@@ -1371,21 +1379,32 @@
               updateViaCache: "none",
             });
 
-            // Apply an update by reloading once when the new worker takes control,
-            // but only on a real update (page was already controlled) and only
-            // when you're not mid-entry.
-            let refreshing = false;
-            const hadController = !!navigator.serviceWorker.controller;
-            navigator.serviceWorker.addEventListener("controllerchange", () => {
-              if (refreshing || !hadController || isBusy()) return;
-              refreshing = true;
-              location.reload();
-            });
-
             // If an update installs while you ARE busy, surface a tap-to-apply bar
             // instead of reloading under you.
             const bar = document.getElementById("updateBar");
             if (bar) bar.onclick = () => location.reload();
+
+            // Apply an update by reloading ONCE per session when the new worker
+            // takes control, and only on a real update (page was already
+            // controlled) and only when you're not mid-entry. A worker can take
+            // control more than once without a new version — a claim reaches
+            // every open client (a Safari tab and the installed PWA share one
+            // registration), and iOS re-activates the same script on a cold
+            // start — and reloading every time turned a single update into a
+            // reload storm, because each reload re-armed the check below.
+            let refreshing = false;
+            const hadController = !!navigator.serviceWorker.controller;
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+              if (refreshing || !hadController) return;
+              if (flag(RELOADED) || isBusy()) {
+                if (bar) bar.hidden = false;
+                return;
+              }
+              refreshing = true;
+              setFlag(RELOADED, "1");
+              location.reload();
+            });
+
             reg.addEventListener("updatefound", () => {
               const sw = reg.installing;
               if (!sw) return;
@@ -1396,8 +1415,15 @@
               });
             });
 
-            // Check for a new version every time the app is opened or resumed.
-            const check = () => reg.update().catch(() => {});
+            // Check for a new version every time the app is opened or resumed —
+            // but at most once every CHECK_GAP_MS within a session, so a reload
+            // can never feed straight back into another activate/reload round.
+            const check = () => {
+              const last = Number(flag(CHECKED)) || 0;
+              if (last && Date.now() - last < CHECK_GAP_MS) return;
+              setFlag(CHECKED, String(Date.now()));
+              reg.update().catch(() => {});
+            };
             check();
             document.addEventListener("visibilitychange", () => {
               if (document.visibilityState === "visible") check();

@@ -7,7 +7,7 @@
 // VERSION is replaced by build.sh with a content hash of the shipped files, so the
 // browser sees a byte-changed worker — and runs its update check — exactly when the
 // app's bytes actually change, and never needlessly otherwise.
-const VERSION = "1df6ed7497ce";
+const VERSION = "9c24f50f913f";
 const CACHE = `lesskey-${VERSION}`;
 
 // App shell: every static file needed to run fully offline. Paths are relative to
@@ -53,9 +53,12 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     (async () => {
+      // Only OUR versions: WAFER (/wafer/) lives on the same origin, so
+      // deleting every foreign cache key would wipe its offline shell (and
+      // it ours).
       const keys = await caches.keys();
       await Promise.all(
-        keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)),
+        keys.filter((k) => k.startsWith("lesskey-") && k !== CACHE).map((k) => caches.delete(k)),
       );
       await self.clients.claim();
     })(),
@@ -64,17 +67,25 @@ self.addEventListener("activate", (e) => {
 
 // Fetch: cache-first for same-origin GET. ignoreSearch so cache-busting query
 // strings (e.g. the favicons' ?v=2) still hit the precached entry.
+// Only shell URLs are ever written to the cache. Runtime caching of every
+// same-origin GET also stored sw.js itself, and with ignoreSearch one cached
+// URL then answered every query variant of it, forever.
+const SHELL_PATHS = new Set(SHELL.map((u) => new URL(u, self.location.href).pathname));
+
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
-  if (new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
   e.respondWith(
     (async () => {
       const hit = await caches.match(req, { ignoreSearch: true });
       if (hit) return hit;
       try {
         const res = await fetch(req);
-        if (res.ok) (await caches.open(CACHE)).put(req, res.clone());
+        if (res.ok && SHELL_PATHS.has(url.pathname)) {
+          (await caches.open(CACHE)).put(req, res.clone());
+        }
         return res;
       } catch (err) {
         if (req.mode === "navigate") {
